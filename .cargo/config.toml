@@ -1,0 +1,6 @@
+## .cargo/config.toml
+#[unstable]
+#codegen-backend = true
+#
+#[profile.dev]
+#codegen-backend = "cranelift"
