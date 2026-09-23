@@ -1,3 +1,6 @@
+pub mod three_d_scene_example;
+
+pub use self::three_d_scene_example::*;
 use bevy::prelude::*;
 use crate::components::*;
 
@@ -17,14 +20,6 @@ pub fn greet_people(time: Res<Time>, mut timer: ResMut<GreetTimer>, query: Query
     }
 }
 
-pub fn update_people(mut query: Query<&mut crate::components::Name, With<Person>>) {
-    for mut name in &mut query {
-        if name.0 == "Elaina Proctor" {
-            name.0 = "Elaina Hume".to_string();
-            break; // We don't need to change any other names.
-        }
-    }
-}
 
 
 

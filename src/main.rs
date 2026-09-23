@@ -21,6 +21,7 @@ impl Plugin for HelloPlugin {
         app.add_systems(Startup, add_people);
         // app.add_systems(Update, hello_world);
         app.add_systems(Update,  (update_people, greet_people).chain());
+        app.add_systems(Startup, scene.spawn());
     }
 }
 
