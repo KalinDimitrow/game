@@ -1,6 +1,8 @@
 pub mod three_d_scene_example;
+pub mod input;
 
 pub use self::three_d_scene_example::*;
+pub use self::input::*;
 use bevy::prelude::*;
 use crate::components::*;
 
