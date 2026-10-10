@@ -1,10 +1,12 @@
 use bevy::prelude::*;
 use leafwing_input_manager::Actionlike;
 
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 pub struct Person;
 
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 pub struct Name(pub String);
 
 #[derive(Resource)]
@@ -15,3 +17,13 @@ pub struct GreetTimer(pub Timer);
 pub enum CameraMovement {
     Pan,
 }
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct SpawnFloor {
+    pub radius: f32,
+}
+
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
+pub struct SpawnCube;
