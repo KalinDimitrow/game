@@ -21,14 +21,6 @@ name = "headless_screenshot"
 path = "src/bin/headless_screenshot.rs"
 required-features = ["headless_screenshot"]
 
-[unstable]
-codegen-backend = true
-
-# for Linux
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld", "-Zshare-generics=y"]
-
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1

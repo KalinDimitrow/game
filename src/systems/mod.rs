@@ -35,7 +35,7 @@ fn test_shortcut() {
 
     // 2. RUN THE FUNCTION DIRECTLY using the world
     // Bevy will automatically build the Query arguments for you behind the scenes!
-    app.world_mut().run_system_once(update_people);
+    app.world_mut().run_system_once(update_people).unwrap();
 
     // 3. Assert your results
     let mut query = app.world_mut().query::<&crate::components::Name>();

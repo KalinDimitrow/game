@@ -9,8 +9,6 @@ pub fn keyboard_event_system(mut keyboard_inputs: MessageReader<KeyboardInput>) 
 }
 
 pub fn pan_camera(query: Single<(&mut Transform, &ActionState<CameraMovement>), With<Camera3d>>) {
-    const CAMERA_PAN_RATE: f32 = 0.5;
-
     let (mut camera_transform, action_state) = query.into_inner();
 
     let camera_pan_vector = action_state.axis_pair(&CameraMovement::Pan);
@@ -29,7 +27,7 @@ pub fn pan_camera(query: Single<(&mut Transform, &ActionState<CameraMovement>), 
 
 pub fn keyboard_input_system(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    key_input: Res<ButtonInput<Key>>,
+    _key_input: Res<ButtonInput<Key>>,
     mut query: Query<&mut Transform, With<Camera3d>>,
     time: Res<Time>
 ) {

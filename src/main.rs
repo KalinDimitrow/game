@@ -13,17 +13,14 @@ fn main() {
         .run();
 }
 
-fn hello_world() {
-    println!("hello world!");
-}
 const WORLD_FILE_PATH: &str = "load_scene_example.scn.ron";
 
 pub struct HelloPlugin;
 
 fn setup(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    _meshes: ResMut<Assets<Mesh>>,
+    _materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>
 ) {
     commands.spawn(DynamicWorldRoot(asset_server.load(WORLD_FILE_PATH)));

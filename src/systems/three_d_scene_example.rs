@@ -1,8 +1,6 @@
 /// set up a simple 3D scene
 use bevy::prelude::*;
-use leafwing_input_manager::input_map::InputMap;
-use leafwing_input_manager::prelude::MouseMove;
-use crate::components::{CameraMovement, Person};
+use crate::components::Person;
 
 pub fn scene() -> impl SceneList {
     bsn_list! [
