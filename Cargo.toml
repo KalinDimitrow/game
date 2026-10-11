@@ -12,6 +12,15 @@ bevy = { version = "0.19.1", features = ["dynamic_linking"] }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 leafwing-input-manager = "0.21.0"
 
+[features]
+headless_screenshot = []
+
+# Excluded from normal build/check/run; only compiles with --features headless_screenshot.
+[[bin]]
+name = "headless_screenshot"
+path = "src/bin/headless_screenshot.rs"
+required-features = ["headless_screenshot"]
+
 [unstable]
 codegen-backend = true
 
