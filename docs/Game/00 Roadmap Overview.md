@@ -36,16 +36,20 @@ flowchart TD
 
 Side track, anytime: [[01 Cleanup Backlog]].
 
+## Architecture convention
+
+Decided 2026-10-14: `src/systems/` is split into one subdirectory per plugin — each subdir's `mod.rs` defines a `Plugin` that registers every system living in that subdir, and `main.rs` only ever adds plugins, never individual systems. So far there's a single subdir, `systems/core/`, with `CorePlugin`. As phases get built, expect one subdir per phase (e.g. `systems/combat/` → `CombatPlugin` for [[04 Phase 1 - Core Combat Loop]], `systems/ai_scripting/` → `AiScriptingPlugin` for [[05 Phase 2 - AI Scripting]]) rather than everything piling into `core`.
+
 ## Current state of the repo
 
 Snapshot of `~/Projects/game` as of 2026-10-14, grounded in the actual source — the project is still at the very start of [[03 Phase 0 - Foundation]] / early [[04 Phase 1 - Core Combat Loop]], not yet past engine scaffolding:
 
-- **Plugin wiring** — `main.rs:7-28`. `HelloPlugin` registers `keyboard_input_system`, `pan_camera`, `materialize_shapes`, `player_action_system` on `Update`, and `scene.spawn()`, `setup`, `load_button_config` on `Startup`. The original Bevy tutorial systems (`add_people`, `greet_people`, `update_people`) are wired up but commented out (`main.rs:19-22`).
+- **Plugin wiring** — `main.rs` just adds `DefaultPlugins` and `CorePlugin`. `CorePlugin` (`systems/core/mod.rs`) registers `InputManagerPlugin<CameraMovement>`/`InputManagerPlugin<PlayerAction>`, `keyboard_input_system`, `pan_camera`, `materialize_shapes`, `player_action_system` on `Update`, and `scene.spawn()`, `setup`, `load_button_config` on `Startup`. The original Bevy tutorial systems (`add_people`, `greet_people`, `update_people`) are referenced but commented out.
 - **Input** — two input patterns coexist right now:
-  - The intended one: `leafwing-input-manager` actions. `CameraMovement::Pan` drives `pan_camera` (`systems/input.rs:22-37`, mouse-move dual-axis). `PlayerAction::Confirm`/`Pause` are loaded from `assets/button_config.ron` via `load_button_config` (`systems/button_config.rs:68-90`) and merely logged by `player_action_system` (`systems/input.rs:13-20`) — no real behavior yet.
-  - The leftover one: `keyboard_input_system` (`systems/input.rs:39-84`) reads `ButtonInput<KeyCode>` directly for A/D camera rotation. Predates the action-based convention — flagged in [[01 Cleanup Backlog]].
-- **Scene** — `setup()` (`systems/scene.rs:36-86`) hardcodes a `PointLight` and `Camera3d`, and spawns a `DynamicWorldRoot` loaded from `assets/load_scene_example.scn.ron`. `materialize_shapes` (`systems/scene.rs:88-111`) turns `SpawnFloor`/`SpawnCube` placeholder components into real meshes once loaded. A parallel, entirely commented-out `scene()` function (`systems/scene.rs:8-34`) is dead code.
-- **Dead tutorial code** — `components/mod.rs` still defines `Person`/`Name`/`GreetTimer`, and `systems/people.rs` still has `add_people`/`greet_people`/`update_people` plus a passing unit test. Not wired into `main.rs` anymore.
+  - The intended one: `leafwing-input-manager` actions. `CameraMovement::Pan` drives `pan_camera` (`systems/core/input.rs:22-37`, mouse-move dual-axis). `PlayerAction::Confirm`/`Pause` are loaded from `assets/button_config.ron` via `load_button_config` (`systems/core/button_config.rs:68-90`) and merely logged by `player_action_system` (`systems/core/input.rs:13-20`) — no real behavior yet.
+  - The leftover one: `keyboard_input_system` (`systems/core/input.rs:39-84`) reads `ButtonInput<KeyCode>` directly for A/D camera rotation. Predates the action-based convention — flagged in [[01 Cleanup Backlog]].
+- **Scene** — `setup()` (`systems/core/scene.rs:36-86`) hardcodes a `PointLight` and `Camera3d`, and spawns a `DynamicWorldRoot` loaded from `assets/load_scene_example.scn.ron`. `materialize_shapes` (`systems/core/scene.rs:88-111`) turns `SpawnFloor`/`SpawnCube` placeholder components into real meshes once loaded. A parallel, entirely commented-out `scene()` function (`systems/core/scene.rs:8-34`) is dead code.
+- **Dead tutorial code** — `components/mod.rs` still defines `Person`/`Name`/`GreetTimer`, and `systems/core/people.rs` still has `add_people`/`greet_people`/`update_people` plus a passing unit test. Not wired into `CorePlugin` anymore.
 - **Tooling** — nightly Rust + cranelift dev codegen (`Cargo.toml`), a `headless_screenshot` feature/bin for smoke-testing rendering without a display.
 
 None of Phase 0's core data model, Phase 1's stats/attack/damage systems, or anything past it exists yet — the engine scaffolding above is what [[03 Phase 0 - Foundation]] and [[04 Phase 1 - Core Combat Loop]] replace and build on.
