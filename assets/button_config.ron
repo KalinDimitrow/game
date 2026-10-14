@@ -1,0 +1,6 @@
+(
+    bindings: {
+        "Confirm": ["Space", "Enter"],
+        "Pause": ["Escape"],
+    },
+)

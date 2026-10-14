@@ -1,10 +1,21 @@
 use bevy::{input::keyboard::*, prelude::*};
 use leafwing_input_manager::prelude::*;
-use crate::components::CameraMovement;
+use crate::components::{CameraMovement, PlayerAction};
 
 pub fn keyboard_event_system(mut keyboard_inputs: MessageReader<KeyboardInput>) {
     for keyboard_input in keyboard_inputs.read() {
         info!("{:?}", keyboard_input);
+    }
+}
+
+// Reacts to `PlayerAction`s rather than hardcoded keys - whatever key the
+// button config binds to `Confirm`/`Pause` ends up here unchanged.
+pub fn player_action_system(action_state: Single<&ActionState<PlayerAction>>) {
+    if action_state.just_pressed(&PlayerAction::Confirm) {
+        info!("Confirm action triggered");
+    }
+    if action_state.just_pressed(&PlayerAction::Pause) {
+        info!("Pause action triggered");
     }
 }
 

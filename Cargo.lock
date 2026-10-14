@@ -2691,6 +2691,8 @@ dependencies = [
  "bevy",
  "leafwing-input-manager",
  "log",
+ "ron",
+ "serde",
 ]
 
 [[package]]

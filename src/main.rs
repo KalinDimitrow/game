@@ -8,6 +8,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(HelloPlugin)
         .add_plugins(InputManagerPlugin::<CameraMovement>::default())
+        .add_plugins(InputManagerPlugin::<PlayerAction>::default())
         .run();
 }
 
@@ -19,8 +20,8 @@ impl Plugin for HelloPlugin {
         // app.add_systems(Startup, add_people);
         // app.add_systems(Update, hello_world);
         // app.add_systems(Update,  (update_people, greet_people).chain());
-        app.add_systems(Update, (keyboard_input_system, pan_camera, materialize_shapes));
-        app.add_systems(Startup, (scene.spawn(), setup));
+        app.add_systems(Update, (keyboard_input_system, pan_camera, materialize_shapes, player_action_system));
+        app.add_systems(Startup, (scene.spawn(), setup, load_button_config));
         app.register_type::<MeshMaterial3d<StandardMaterial>>();
         app.register_type::<SpawnFloor>();
         app.register_type::<SpawnCube>();
