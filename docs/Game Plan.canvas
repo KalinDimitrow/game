@@ -1,0 +1,29 @@
+{
+	"nodes":[
+		{"id":"current-state","type":"file","file":"Game/00 Roadmap Overview.md","x":0,"y":-700,"width":460,"height":420},
+		{"id":"cleanup","type":"file","file":"Game/01 Cleanup Backlog.md","x":-720,"y":-460,"width":460,"height":400},
+		{"id":"note-focus","type":"text","text":"Low-focus mode: pick anything from **Cleanup Backlog** and do just that one item. No design decisions needed, no planning context beyond the file refs already in the note.","x":-1300,"y":-380,"width":420,"height":200},
+		{"id":"concept","type":"file","file":"Game/02 Concept.md","x":0,"y":-180,"width":460,"height":360},
+		{"id":"phase0","type":"file","file":"Game/03 Phase 0 - Foundation.md","x":0,"y":260,"width":460,"height":340},
+		{"id":"phase1","type":"file","file":"Game/04 Phase 1 - Core Combat Loop.md","x":0,"y":680,"width":460,"height":380},
+		{"id":"milestone","type":"file","file":"Game/10 First Playable Milestone.md","x":560,"y":680,"width":440,"height":380},
+		{"id":"phase2","type":"file","file":"Game/05 Phase 2 - AI Scripting.md","x":0,"y":1140,"width":460,"height":420},
+		{"id":"phase3","type":"file","file":"Game/06 Phase 3 - Waves and Opposition.md","x":0,"y":1640,"width":460,"height":300},
+		{"id":"phase4","type":"file","file":"Game/07 Phase 4 - Meta Rules.md","x":0,"y":2020,"width":460,"height":300},
+		{"id":"phase5","type":"file","file":"Game/08 Phase 5 - UI and Feedback.md","x":0,"y":2400,"width":460,"height":300},
+		{"id":"phase6","type":"file","file":"Game/09 Phase 6 - Persistence and Polish.md","x":0,"y":2780,"width":460,"height":360}
+	],
+	"edges":[
+		{"id":"e1","fromNode":"current-state","fromSide":"left","toNode":"cleanup","toSide":"right"},
+		{"id":"e2","fromNode":"note-focus","fromSide":"right","toNode":"cleanup","toSide":"left"},
+		{"id":"e3","fromNode":"current-state","fromSide":"bottom","toNode":"concept","toSide":"top"},
+		{"id":"e4","fromNode":"concept","fromSide":"bottom","toNode":"phase0","toSide":"top"},
+		{"id":"e5","fromNode":"phase0","fromSide":"bottom","toNode":"phase1","toSide":"top"},
+		{"id":"e6","fromNode":"phase1","fromSide":"right","toNode":"milestone","toSide":"left"},
+		{"id":"e7","fromNode":"phase1","fromSide":"bottom","toNode":"phase2","toSide":"top"},
+		{"id":"e8","fromNode":"phase2","fromSide":"bottom","toNode":"phase3","toSide":"top"},
+		{"id":"e9","fromNode":"phase3","fromSide":"bottom","toNode":"phase4","toSide":"top"},
+		{"id":"e10","fromNode":"phase4","fromSide":"bottom","toNode":"phase5","toSide":"top"},
+		{"id":"e11","fromNode":"phase5","fromSide":"bottom","toNode":"phase6","toSide":"top"}
+	]
+}
