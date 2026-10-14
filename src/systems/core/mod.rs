@@ -27,7 +27,7 @@ impl Plugin for CorePlugin {
                 player_action_system,
             ),
         );
-        app.add_systems(Startup, (scene.spawn(), setup, load_button_config));
+        app.add_systems(Startup, (setup, load_button_config));
         app.register_type::<MeshMaterial3d<StandardMaterial>>();
         app.register_type::<SpawnFloor>();
         app.register_type::<SpawnCube>();
