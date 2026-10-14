@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Game/01 Cleanup Backlog.md",
+                "file": "Game/03 Phase 0 - Foundation.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "01 Cleanup Backlog"
+              "title": "03 Phase 0 - Foundation"
             }
           }
         ]
@@ -190,6 +190,8 @@
   },
   "active": "fd5bf5a55d5d8512",
   "lastOpenFiles": [
+    "Game/02 Concept.md",
+    "Game/01 Cleanup Backlog.md",
     "Game/01 Cleanup Backlog.md.tmp.72974.05529911f009",
     "Game/00 Roadmap Overview.md",
     "Game/00 Roadmap Overview.md.tmp.72974.7934eca70261",
@@ -201,11 +203,9 @@
     "Game/01 Cleanup Backlog.md.tmp.72974.b41ee7151269",
     "Game/04 Phase 1 - Core Combat Loop.md",
     "Game Plan.canvas",
-    "Game/02 Concept.md",
     "Game Plan.canvas.tmp.72974.c8d2730fe341",
     "Game/01 Cleanup Backlog.md.tmp.72974.6bc31f68f422",
     "Game/02 Concept.md.tmp.72974.2e504485aa7f",
-    "Game/00 Roadmap Overview.md.tmp.72974.259d0bfe8204",
     "Welcome.md",
     "Untitled.canvas",
     "Game/10 First Playable Milestone.md",
@@ -217,7 +217,6 @@
     "Bevy/15 State Management.md",
     "Game/03 Vertical Slice Milestone.md",
     "Game/02 Open Design Decisions.md",
-    "Game/01 Cleanup Backlog.md",
     "Game/00 Current State.md",
     "Bevy/00 Bevy Capabilities Map.md",
     "Bevy/03 Transforms and Camera.md"
