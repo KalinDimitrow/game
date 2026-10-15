@@ -48,3 +48,17 @@ impl Default for ThirdPersonCamera {
         }
     }
 }
+
+/// Which locomotion animation `Character` should currently be playing. Set by
+/// `move_character`, read by `apply_character_animation` - kept as its own
+/// component (rather than re-deriving it from velocity every frame in the
+/// animation system) so the animation only restarts on an actual state change.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CharacterAnimationState {
+    #[default]
+    Idle,
+    Walking,
+    // No real jump clip exists in the available assets (see the cleanup
+    // backlog) - this reuses the running animation as a stand-in.
+    Jumping,
+}
