@@ -16,6 +16,13 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     ));
     commands.spawn((
         Camera3d::default(),
+        // Inactive: `systems/terrain`'s `FreeCamera` is the one actually rendering right
+        // now. Kept alive (rather than removed) so `pan_camera`'s `Single<...,
+        // With<Camera3d>>` query still has exactly one match instead of panicking.
+        Camera {
+            is_active: false,
+            ..default()
+        },
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
         InputMap::default().with_dual_axis(CameraMovement::Pan, MouseMove::default()),
     ));
