@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Game/03 Phase 0 - Foundation.md",
+                "file": "Game/01 Cleanup Backlog.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "03 Phase 0 - Foundation"
+              "title": "01 Cleanup Backlog"
             }
           }
         ]
@@ -191,8 +191,8 @@
   "active": "fd5bf5a55d5d8512",
   "lastOpenFiles": [
     "Game/02 Concept.md",
-    "Game/01 Cleanup Backlog.md",
     "Game/03 Phase 0 - Foundation.md",
+    "Game/01 Cleanup Backlog.md",
     "Game/04 Phase 1 - Core Combat Loop.md",
     "Game/03 Phase 0 - Foundation.md.tmp.29.156b89fd3399",
     "Game/00 Roadmap Overview.md.tmp.29.e06fca93e943",
