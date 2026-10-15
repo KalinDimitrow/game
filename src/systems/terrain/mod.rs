@@ -1,4 +1,4 @@
-use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
+use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
 use bevy::prelude::*;
 
 pub const TERRAIN_TILE_PATH: &str = "models/terrain/ground_tile.glb";
@@ -12,7 +12,7 @@ pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(FreeCameraPlugin);
+        app.add_plugins(PhysicsPlugins::default());
         app.add_systems(Startup, spawn_terrain);
     }
 }
@@ -30,23 +30,21 @@ fn spawn_terrain(mut commands: Commands, asset_server: Res<AssetServer>) {
         }
     }
 
+    // Single flat collider spanning the whole grid, rather than one per tile -
+    // every tile is coplanar right now so per-tile colliders would just be
+    // overhead. Revisit per-cell colliders once terrain has real height/obstacles.
+    let grid_center = Vec3::new(GRID_WIDTH as f32 / 2.0 - 0.5, 0.0, GRID_DEPTH as f32 / 2.0 - 0.5);
+    commands.spawn((
+        RigidBody::Static,
+        Collider::cuboid(GRID_WIDTH as f32, 0.1, GRID_DEPTH as f32),
+        Transform::from_translation(grid_center - Vec3::Y * 0.05),
+    ));
+
     commands.spawn((
         DirectionalLight {
             shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(0.0, 1.0, 0.0).looking_at(Vec3::new(-0.3, -0.5, -0.2), Vec3::Y),
-    ));
-
-    let grid_center = Vec3::new(GRID_WIDTH as f32 / 2.0, 0.0, GRID_DEPTH as f32 / 2.0);
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(grid_center.x, 14.0, GRID_DEPTH as f32 + 10.0)
-            .looking_at(grid_center, Vec3::Y),
-        FreeCamera {
-            walk_speed: 8.0,
-            run_speed: 24.0,
-            ..default()
-        },
     ));
 }

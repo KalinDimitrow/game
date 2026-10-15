@@ -8,11 +8,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.19.1", features = ["dynamic_linking", "free_camera"] }
+bevy = { version = "0.19.1", features = ["dynamic_linking"] }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 leafwing-input-manager = "0.21.0"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
+avian3d = { version = "0.7.0", default-features = false, features = ["3d", "default-collider", "parry-f32", "f32"] }
 
 [features]
 headless_screenshot = []

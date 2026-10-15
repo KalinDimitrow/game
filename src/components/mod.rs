@@ -16,12 +16,35 @@ pub enum PlayerAction {
     Pause,
 }
 
-#[derive(Component, Reflect, Default)]
-#[reflect(Component)]
-pub struct SpawnFloor {
-    pub radius: f32,
+// Default-mapped to A/D/W/S/Space in `systems/character_controller`. Buttonlike,
+// same reasoning as `PlayerAction`: systems react to these, never to raw KeyCodes.
+#[derive(Actionlike, Clone, Debug, Copy, PartialEq, Eq, Hash, Reflect)]
+pub enum CharacterMovement {
+    Left,
+    Right,
+    Forward,
+    Backward,
+    Jump,
 }
 
-#[derive(Component, Reflect, Default)]
-#[reflect(Component)]
-pub struct SpawnCube;
+/// Marks the player-controlled capsule so camera/movement systems can find it.
+#[derive(Component)]
+pub struct Character;
+
+/// Orbit state for the camera following `Character`, driven by `CameraMovement::Pan`.
+#[derive(Component)]
+pub struct ThirdPersonCamera {
+    pub yaw: f32,
+    pub pitch: f32,
+    pub distance: f32,
+}
+
+impl Default for ThirdPersonCamera {
+    fn default() -> Self {
+        Self {
+            yaw: 0.0,
+            pitch: -0.3,
+            distance: 6.0,
+        }
+    }
+}
