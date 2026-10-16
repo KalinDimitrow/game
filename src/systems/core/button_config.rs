@@ -65,12 +65,15 @@ fn keycode_from_str(name: &str) -> Option<KeyCode> {
     KEYCODES.get(name).copied()
 }
 
-pub fn load_button_config(mut commands: Commands) {
-    let contents =
-        std::fs::read_to_string(BUTTON_CONFIG_PATH).expect("failed to read button config");
-    let parsed: ButtonConfigFile = ron::from_str(&contents).expect("failed to parse button config");
+// Pure parsing/validation, kept separate from the system below so it's
+// testable without a filesystem or a Bevy `World`. Unknown actions/keys are
+// skipped with a warning (soft failure, config just has stale entries);
+// malformed RON is a hard `Err` (the file isn't usable at all).
+fn parse_button_config(contents: &str) -> Result<Vec<(PlayerAction, KeyCode)>, BevyError> {
+    let parsed: ButtonConfigFile =
+        ron::from_str(contents).map_err(|e| format!("failed to parse button config: {e}"))?;
 
-    let mut input_map = InputMap::<PlayerAction>::default();
+    let mut bindings = Vec::new();
     for (action_name, key_names) in parsed.bindings {
         let Some(action) = action_from_str(&action_name) else {
             warn!("unknown action `{action_name}` in button config, skipping");
@@ -81,10 +84,87 @@ pub fn load_button_config(mut commands: Commands) {
                 warn!("unknown key `{key_name}` in button config, skipping");
                 continue;
             };
-            input_map.insert(action, key);
+            bindings.push((action, key));
         }
+    }
+    Ok(bindings)
+}
+
+// Fallible Startup system: a missing/malformed config file is a player-facing
+// problem (this file is meant to be hand-edited for rebinding), not a bug, so
+// it gets a specific message and a clean halt instead of a bare `.expect()`
+// panic. Returning `Err` here still stops the app before any gameplay runs -
+// Bevy's default error handler treats it as `Severity::Panic`.
+pub fn load_button_config(mut commands: Commands) -> Result<(), BevyError> {
+    let contents = std::fs::read_to_string(BUTTON_CONFIG_PATH)
+        .map_err(|e| format!("failed to read button config at `{BUTTON_CONFIG_PATH}`: {e}"))?;
+    let bindings = parse_button_config(&contents)
+        .map_err(|e| format!("{e} (in `{BUTTON_CONFIG_PATH}`)"))?;
+
+    let mut input_map = InputMap::<PlayerAction>::default();
+    for (action, key) in bindings {
+        input_map.insert(action, key);
     }
 
     // `ActionState<PlayerAction>` is added automatically as a required component of `InputMap`.
     commands.spawn(input_map);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_valid_config() {
+        let ron = r#"(
+            bindings: {
+                "Confirm": ["Enter"],
+                "Pause": ["Escape"],
+            }
+        )"#;
+
+        let mut bindings = parse_button_config(ron).expect("valid config should parse");
+        bindings.sort_by_key(|(action, _)| format!("{action:?}"));
+
+        assert_eq!(
+            bindings,
+            vec![
+                (PlayerAction::Confirm, KeyCode::Enter),
+                (PlayerAction::Pause, KeyCode::Escape),
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_ron_is_an_error_not_a_panic() {
+        let result = parse_button_config("not valid ron at all {{{");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn unknown_action_is_skipped_not_an_error() {
+        let ron = r#"(
+            bindings: {
+                "NotARealAction": ["Enter"],
+            }
+        )"#;
+
+        let bindings =
+            parse_button_config(ron).expect("unknown action should be skipped, not fail parsing");
+        assert!(bindings.is_empty());
+    }
+
+    #[test]
+    fn unknown_key_is_skipped_not_an_error() {
+        let ron = r#"(
+            bindings: {
+                "Confirm": ["NotARealKey"],
+            }
+        )"#;
+
+        let bindings =
+            parse_button_config(ron).expect("unknown key should be skipped, not fail parsing");
+        assert!(bindings.is_empty());
+    }
 }
