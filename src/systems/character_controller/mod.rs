@@ -29,10 +29,9 @@ impl Plugin for CharacterControllerPlugin {
         app.add_systems(
             Update,
             (
-                move_character,
+                (move_character, apply_character_animation).chain(),
                 follow_character,
                 spawn_fox_visual_when_ready.run_if(not(resource_exists::<CharacterAnimations>)),
-                apply_character_animation,
             ),
         );
     }
@@ -234,12 +233,15 @@ fn apply_character_animation(
         .repeat();
 }
 
+type OrbitCameraQuery<'w> = (
+    &'w mut Transform,
+    &'w mut ThirdPersonCamera,
+    &'w ActionState<CameraMovement>,
+);
+
 fn follow_character(
     character: Single<&Transform, (With<Character>, Without<Camera3d>)>,
-    camera: Single<
-        (&mut Transform, &mut ThirdPersonCamera, &ActionState<CameraMovement>),
-        (With<Camera3d>, Without<Character>),
-    >,
+    camera: Single<OrbitCameraQuery<'_>, (With<Camera3d>, Without<Character>)>,
 ) {
     let (mut camera_transform, mut orbit, action_state) = camera.into_inner();
     let pan = action_state.axis_pair(&CameraMovement::Pan);
