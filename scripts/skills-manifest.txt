@@ -1,0 +1,6 @@
+# One skill path per line, relative to vendor/skills/.
+# The symlink name in .claude/skills/ is read from each SKILL.md's `name:` frontmatter,
+# not from this path, so renames upstream are picked up automatically.
+rust-skills
+awesome-gamedev-agent-skills/skills/other-engines/bevy-ecs
+awesome-gamedev-agent-skills/skills/genres/tower-defense

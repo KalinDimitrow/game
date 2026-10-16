@@ -1,0 +1,6 @@
+[submodule "vendor/skills/rust-skills"]
+	path = vendor/skills/rust-skills
+	url = https://github.com/leonardomso/rust-skills.git
+[submodule "vendor/skills/awesome-gamedev-agent-skills"]
+	path = vendor/skills/awesome-gamedev-agent-skills
+	url = https://github.com/gamedev-skills/awesome-gamedev-agent-skills.git
