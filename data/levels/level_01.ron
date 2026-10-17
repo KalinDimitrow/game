@@ -1,0 +1,27 @@
+(
+    name: "level_01",
+
+    grid: (
+        width: 280,
+        depth: 160,
+        cell_size: 1.0,
+    ),
+
+    terrain: (
+        tiles: [
+            (id: "ground", path: "models/terrain/ground_tile.glb"),
+        ],
+        default_tile: "ground",
+        // No exceptions yet - the grid is flat and fully walkable. Add
+        // entries here (a different `tile` id, a non-zero `height`,
+        // `walkable: false`) once terrain needs obstacles or elevation.
+        overrides: [],
+    ),
+
+    points_of_interest: [
+        (kind: PlayerSpawn, position: (140, 80)),
+        (kind: EnemySpawn("north_gate"), position: (27, 2)),
+        (kind: EnemySpawn("south_gate"), position: (27, 14)),
+        (kind: Objective("core"), position: (0, 8)),
+    ],
+)

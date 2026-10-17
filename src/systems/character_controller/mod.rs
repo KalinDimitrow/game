@@ -2,7 +2,7 @@ use avian3d::prelude::{Collider, LinearVelocity, LockedAxes, RigidBody};
 use bevy::world_serialization::WorldInstanceReady;
 
 use crate::prelude::*;
-use crate::systems::terrain::{GRID_DEPTH, GRID_WIDTH};
+use crate::systems::terrain::{LevelConfig, spawn_terrain};
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;
@@ -20,7 +20,7 @@ pub struct CharacterControllerPlugin;
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<CharacterMovement>::default());
-        app.add_systems(Startup, spawn_character);
+        app.add_systems(Startup, spawn_character.after(spawn_terrain));
         app.add_systems(
             Update,
             (
@@ -42,8 +42,13 @@ struct CharacterAnimations {
     graph_handle: Handle<AnimationGraph>,
 }
 
-fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let spawn = Vec3::new(GRID_WIDTH as f32 / 2.0, 3.0, GRID_DEPTH as f32 / 2.0);
+fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>, level: Res<LevelConfig>) {
+    // Falls back to the grid center if the level doesn't define a `PlayerSpawn`
+    // POI - a level file omitting it is plausible author input, not a bug.
+    let (grid_x, grid_z) = level
+        .player_spawn()
+        .unwrap_or((level.grid_width / 2, level.grid_depth / 2));
+    let spawn = Vec3::new(grid_x as f32 * level.cell_size, 3.0, grid_z as f32 * level.cell_size);
 
     let mut movement_input = InputMap::<CharacterMovement>::default();
     movement_input

@@ -1,11 +1,10 @@
 use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
+use std::collections::HashMap;
 
 use crate::prelude::*;
 
-// Rectangular, not square, so it's visually obvious which axis is which while
-// testing grid/tile-based collision later.
-pub const GRID_WIDTH: usize = 28;
-pub const GRID_DEPTH: usize = 16;
+pub mod level_config;
+pub use self::level_config::*;
 
 pub struct TerrainPlugin;
 
@@ -16,26 +15,58 @@ impl Plugin for TerrainPlugin {
     }
 }
 
-fn spawn_terrain(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // One glTF scene load, instanced across the grid - each tile is a separate
-    // entity/transform so a later collision system can key off grid cell (i, j).
-    let tile_scene = asset_server.load(GltfAssetLabel::Scene(0).from_asset(TERRAIN_TILE_PATH));
-    for j in 0..GRID_DEPTH {
-        for i in 0..GRID_WIDTH {
+// Fallible Startup system: a missing/malformed level file is a content-author
+// problem, not a bug - same reasoning as `load_button_config`/`load_display_config`.
+// `pub(crate)` rather than private: `character_controller::spawn_character` orders
+// itself after this system, since it reads the `LevelConfig` resource inserted here.
+pub(crate) fn spawn_terrain(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) -> Result<(), BevyError> {
+    let level = load_level_config()?;
+    info!("loading level \"{}\"", level.name);
+
+    // One glTF scene load per distinct tile asset the level references,
+    // instanced across the grid - each tile is a separate entity/transform so
+    // a later collision system can key off grid cell (i, j).
+    let mut tile_scenes: HashMap<&str, Handle<WorldAsset>> = HashMap::new();
+    for j in 0..level.grid_depth {
+        for i in 0..level.grid_width {
+            let (tile_path, height) = match level.cell_overrides.get(&(i, j)) {
+                Some(cell) => (cell.tile_path.as_str(), cell.height),
+                None => (level.default_tile_path.as_str(), 0.0),
+            };
+            let scene = tile_scenes
+                .entry(tile_path)
+                .or_insert_with(|| {
+                    asset_server.load(GltfAssetLabel::Scene(0).from_asset(tile_path.to_string()))
+                })
+                .clone();
             commands.spawn((
-                Transform::from_xyz(i as f32, 0.0, j as f32),
-                WorldAssetRoot(tile_scene.clone()),
+                Transform::from_xyz(i as f32 * level.cell_size, height, j as f32 * level.cell_size),
+                WorldAssetRoot(scene),
             ));
         }
     }
 
     // Single flat collider spanning the whole grid, rather than one per tile -
     // every tile is coplanar right now so per-tile colliders would just be
-    // overhead. Revisit per-cell colliders once terrain has real height/obstacles.
-    let grid_center = Vec3::new(GRID_WIDTH as f32 / 2.0 - 0.5, 0.0, GRID_DEPTH as f32 / 2.0 - 0.5);
+    // overhead. Revisit per-cell colliders once terrain has real height/obstacles
+    // - the level format already carries per-cell `height`/`walkable` (see
+    // `level_config`), nothing reads them for collision yet.
+    let grid_size = Vec3::new(
+        level.grid_width as f32 * level.cell_size,
+        0.1,
+        level.grid_depth as f32 * level.cell_size,
+    );
+    let grid_center = Vec3::new(
+        grid_size.x / 2.0 - level.cell_size / 2.0,
+        0.0,
+        grid_size.z / 2.0 - level.cell_size / 2.0,
+    );
     commands.spawn((
         RigidBody::Static,
-        Collider::cuboid(GRID_WIDTH as f32, 0.1, GRID_DEPTH as f32),
+        Collider::cuboid(grid_size.x, grid_size.y, grid_size.z),
         Transform::from_translation(grid_center - Vec3::Y * 0.05),
     ));
 
@@ -46,4 +77,7 @@ fn spawn_terrain(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         Transform::from_xyz(0.0, 1.0, 0.0).looking_at(Vec3::new(-0.3, -0.5, -0.2), Vec3::Y),
     ));
+
+    commands.insert_resource(level);
+    Ok(())
 }
