@@ -8,6 +8,10 @@ use crate::components::PlayerAction;
 
 pub const BUTTON_CONFIG_PATH: &str = "data/config/button_config.ron";
 
+// `display_config` duplicates this file's read/parse/wrap-errors shape - fine
+// for two config files, but see the cleanup backlog's "unify config loading"
+// entry once a third one shows up.
+//
 // Placeholder config format: maps an action's name to the keys that trigger it.
 // This indirection is what makes rebinding possible - systems only ever check
 // `PlayerAction`, never a hardcoded `KeyCode`, so changing this file is enough
