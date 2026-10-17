@@ -1,13 +1,7 @@
 use avian3d::prelude::{Collider, LinearVelocity, LockedAxes, RigidBody};
-use bevy::prelude::*;
 use bevy::world_serialization::WorldInstanceReady;
-use leafwing_input_manager::prelude::*;
 
-use crate::components::{
-    CameraMovement, Character, CharacterAnimationState, CharacterMovement, ThirdPersonCamera,
-};
-use crate::systems::terrain::{GRID_DEPTH, GRID_WIDTH};
-use crate::utils::constants::FOX_PATH;
+use crate::prelude::*;
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;

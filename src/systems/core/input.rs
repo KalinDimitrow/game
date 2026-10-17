@@ -1,6 +1,4 @@
-use bevy::prelude::*;
-use leafwing_input_manager::prelude::*;
-use crate::components::PlayerAction;
+use crate::prelude::*;
 
 // Reacts to `PlayerAction`s rather than hardcoded keys - whatever key the
 // button config binds to `Confirm`/`Pause` ends up here unchanged.

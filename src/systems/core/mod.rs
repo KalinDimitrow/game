@@ -4,10 +4,7 @@ pub mod input;
 pub use self::button_config::*;
 pub use self::input::*;
 
-use bevy::prelude::*;
-use leafwing_input_manager::prelude::*;
-
-use crate::components::{CameraMovement, PlayerAction};
+use crate::prelude::*;
 
 pub struct CorePlugin;
 

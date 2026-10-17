@@ -1,7 +1,6 @@
 use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
-use bevy::prelude::*;
 
-use crate::utils::constants::TERRAIN_TILE_PATH;
+use crate::prelude::*;
 
 // Rectangular, not square, so it's visually obvious which axis is which while
 // testing grid/tile-based collision later.

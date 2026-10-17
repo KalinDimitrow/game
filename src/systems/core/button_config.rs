@@ -1,11 +1,8 @@
-use bevy::prelude::*;
-use leafwing_input_manager::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use crate::components::PlayerAction;
-use crate::utils::constants::BUTTON_CONFIG_PATH;
+use crate::prelude::*;
 
 // `display_config` duplicates this file's read/parse/wrap-errors shape - fine
 // for two config files, but see the cleanup backlog's "unify config loading"
