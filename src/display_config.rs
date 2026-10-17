@@ -2,7 +2,7 @@ use bevy::ecs::error::BevyError;
 use bevy::window::WindowResolution;
 use serde::Deserialize;
 
-pub const DISPLAY_CONFIG_PATH: &str = "data/config/display.ron";
+use crate::utils::constants::DISPLAY_CONFIG_PATH;
 
 // Duplicates `button_config`'s read/parse/wrap-errors shape - fine for two
 // config files, but see the cleanup backlog's "unify config loading" entry

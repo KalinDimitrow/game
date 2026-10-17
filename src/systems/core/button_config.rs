@@ -5,8 +5,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use crate::components::PlayerAction;
-
-pub const BUTTON_CONFIG_PATH: &str = "data/config/button_config.ron";
+use crate::utils::constants::BUTTON_CONFIG_PATH;
 
 // `display_config` duplicates this file's read/parse/wrap-errors shape - fine
 // for two config files, but see the cleanup backlog's "unify config loading"

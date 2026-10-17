@@ -7,13 +7,13 @@ use crate::components::{
     CameraMovement, Character, CharacterAnimationState, CharacterMovement, ThirdPersonCamera,
 };
 use crate::systems::terrain::{GRID_DEPTH, GRID_WIDTH};
+use crate::utils::constants::FOX_PATH;
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;
 const MOUSE_SENSITIVITY: f32 = 0.005;
 const PITCH_LIMIT: f32 = 1.4;
 
-const FOX_PATH: &str = "models/character/Fox.glb";
 // Fox.glb's mesh-local bounding box is ~79 units tall (measured from the
 // glTF's accessor min/max, origin at its feet) vs. the capsule collider's
 // 1.8 (length 1.0 + 2 * radius 0.4) - this scale brings the model to the

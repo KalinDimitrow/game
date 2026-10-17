@@ -5,6 +5,7 @@ use game::display_config::load_display_config;
 use game::systems::character_controller::CharacterControllerPlugin;
 use game::systems::core::CorePlugin;
 use game::systems::terrain::TerrainPlugin;
+use game::utils::constants::ASSET_ROOT_PATH;
 
 fn main() {
     // Read before the `App` exists: window creation happens as part of
@@ -22,7 +23,7 @@ fn main() {
         .add_plugins(
             DefaultPlugins
                 .set(AssetPlugin {
-                    file_path: "data/assets".to_string(),
+                    file_path: ASSET_ROOT_PATH.to_string(),
                     ..default()
                 })
                 .set(WindowPlugin {

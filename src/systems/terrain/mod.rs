@@ -1,7 +1,7 @@
 use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
 use bevy::prelude::*;
 
-pub const TERRAIN_TILE_PATH: &str = "models/terrain/ground_tile.glb";
+use crate::utils::constants::TERRAIN_TILE_PATH;
 
 // Rectangular, not square, so it's visually obvious which axis is which while
 // testing grid/tile-based collision later.
