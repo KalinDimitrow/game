@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use crate::components::PlayerAction;
 
-pub const BUTTON_CONFIG_PATH: &str = "assets/button_config.ron";
+pub const BUTTON_CONFIG_PATH: &str = "data/config/button_config.ron";
 
 // Placeholder config format: maps an action's name to the keys that trigger it.
 // This indirection is what makes rebinding possible - systems only ever check
