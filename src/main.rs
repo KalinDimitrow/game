@@ -2,6 +2,7 @@ use bevy::asset::AssetPlugin;
 use bevy::window::WindowPlugin;
 use game::display_config::load_display_config;
 use game::prelude::*;
+use game::systems_prelude::*;
 
 fn main() {
     // Read before the `App` exists: window creation happens as part of

@@ -2,6 +2,7 @@ use avian3d::prelude::{Collider, LinearVelocity, LockedAxes, RigidBody};
 use bevy::world_serialization::WorldInstanceReady;
 
 use crate::prelude::*;
+use crate::systems::terrain::{GRID_DEPTH, GRID_WIDTH};
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;

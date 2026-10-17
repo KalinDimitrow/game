@@ -1,13 +1,10 @@
-//! Crate-local prelude: `use crate::prelude::*;` (or `use game::prelude::*;`
-//! from `main.rs`) pulls in every component, plugin, and path constant in
-//! the crate, plus `bevy`/`leafwing-input-manager`'s own preludes. Anything
-//! used by only one or two files (avian3d, serde, `std::collections`, ...)
-//! still stays explicit at the call site.
+//! Base crate prelude: `bevy`/`leafwing-input-manager`'s preludes, this
+//! crate's components, and path constants. Imports nothing from `systems/`
+//! or `systems_prelude`, so it's a leaf every `systems/*` file can import
+//! directly without risking a cycle. For the list of implemented plugins,
+//! see `systems_prelude` instead - the two are independent on purpose.
 
 pub use crate::components::*;
-pub use crate::systems::character_controller::*;
-pub use crate::systems::core::*;
-pub use crate::systems::terrain::*;
 pub use crate::utils::constants::*;
 pub use bevy::prelude::*;
 pub use leafwing_input_manager::prelude::*;
