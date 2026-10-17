@@ -65,7 +65,10 @@
       "Bash(xargs -I{} echo {})",
       "Bash(awk '/^default = \\\\[/{f=1} f{print} f&&/\\\\]/{if\\(++c>1\\)exit}' Cargo.toml)",
       "Bash(mkdir -p /home/kalin/Projects/game/assets/models/character && cp /home/kalin/Projects/bevy/assets/models/animated/Fox.glb /home/kalin/Projects/game/assets/models/character/Fox.glb && ls -la /home/kalin/Projects/game/assets/models/character/)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(xargs ls -la)",
+      "Bash(find / -maxdepth 6 -iname \"*bevy-*examples*\")",
+      "Bash(cargo tree *)"
     ]
   }
 }
