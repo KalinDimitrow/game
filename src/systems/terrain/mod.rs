@@ -1,4 +1,5 @@
 use avian3d::prelude::{Collider, PhysicsPlugins, RigidBody};
+use bevy::world_serialization::WorldInstanceReady;
 use std::collections::HashMap;
 
 use crate::prelude::*;
@@ -22,9 +23,23 @@ impl Plugin for TerrainPlugin {
 pub(crate) fn spawn_terrain(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    mut standard_materials: ResMut<Assets<StandardMaterial>>,
 ) -> Result<(), BevyError> {
     let level = load_level_config()?;
     info!("loading level \"{}\"", level.name);
+
+    // Chessboard tint, alternating per grid cell by (i + j) parity - swapped
+    // onto each tile's mesh once its scene instance finishes spawning (the
+    // `.observe` below), since glTF scene spawning is async and the mesh/
+    // material entities don't exist yet at the time of this `commands.spawn`.
+    let light_tile = standard_materials.add(StandardMaterial {
+        base_color: Color::srgb(0.82, 0.82, 0.76),
+        ..default()
+    });
+    let dark_tile = standard_materials.add(StandardMaterial {
+        base_color: Color::srgb(0.22, 0.22, 0.2),
+        ..default()
+    });
 
     // One glTF scene load per distinct tile asset the level references,
     // instanced across the grid - each tile is a separate entity/transform so
@@ -42,10 +57,23 @@ pub(crate) fn spawn_terrain(
                     asset_server.load(GltfAssetLabel::Scene(0).from_asset(tile_path.to_string()))
                 })
                 .clone();
-            commands.spawn((
-                Transform::from_xyz(i as f32 * level.cell_size, height, j as f32 * level.cell_size),
-                WorldAssetRoot(scene),
-            ));
+            let tile_material = if (i + j) % 2 == 0 { light_tile.clone() } else { dark_tile.clone() };
+            commands
+                .spawn((
+                    Transform::from_xyz(i as f32 * level.cell_size, height, j as f32 * level.cell_size),
+                    WorldAssetRoot(scene),
+                ))
+                .observe(
+                    move |ready: On<WorldInstanceReady>,
+                          children: Query<&Children>,
+                          mut mesh_materials: Query<&mut MeshMaterial3d<StandardMaterial>>| {
+                        for descendant in children.iter_descendants(ready.entity) {
+                            if let Ok(mut material) = mesh_materials.get_mut(descendant) {
+                                material.0 = tile_material.clone();
+                            }
+                        }
+                    },
+                );
         }
     }
 
