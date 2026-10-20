@@ -8,6 +8,9 @@ const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;
 const MOUSE_SENSITIVITY: f32 = 0.005;
 const PITCH_LIMIT: f32 = 1.4;
+// Radians/sec-ish slerp rate for turning the visual to face travel direction -
+// fast enough to feel responsive without snapping instantly on direction changes.
+const VISUAL_TURN_SPEED: f32 = 10.0;
 
 // character.glb here is from the Blender FBX pipeline
 // (convert_fbx_to_glb.sh), which bakes the source .fbx's unit scale
@@ -26,7 +29,7 @@ impl Plugin for CharacterControllerPlugin {
         app.add_systems(
             Update,
             (
-                (move_character, apply_character_animation).chain(),
+                (move_character, apply_character_animation, orient_character_visual).chain(),
                 follow_character,
                 spawn_character_visual_when_ready.run_if(not(resource_exists::<CharacterAnimations>)),
             ),
@@ -166,6 +169,7 @@ fn spawn_character_visual_when_ready(
     commands.entity(*character).with_children(|parent| {
         parent
             .spawn((
+                CharacterVisual,
                 WorldAssetRoot(
                     mesh_gltf
                         .default_scene
@@ -285,6 +289,36 @@ fn apply_character_animation(
     transitions
         .play(&mut player, index, std::time::Duration::from_millis(200))
         .repeat();
+}
+
+// Rotates the visual child (not `Character` itself, whose rotation is locked
+// for physics - see `LockedAxes::ROTATION_LOCKED` in `spawn_character`) to
+// face the current horizontal movement direction, slerping toward it so
+// direction changes turn smoothly instead of snapping.
+fn orient_character_visual(
+    character: Single<&LinearVelocity, With<Character>>,
+    mut visual: Query<&mut Transform, With<CharacterVisual>>,
+    time: Res<Time>,
+) {
+    // The visual spawns as a child only once its glTF scene has loaded, so
+    // "no match yet" is expected, not an error - same reasoning as
+    // `apply_character_animation`'s player query.
+    let Ok(mut transform) = visual.single_mut() else {
+        return;
+    };
+
+    let horizontal = Vec3::new(character.0.x, 0.0, character.0.z);
+    if horizontal.length_squared() < 1e-4 {
+        return;
+    }
+
+    // The character.glb rest pose faces +Z rather than Bevy's usual -Z forward
+    // (an artifact of the FBX->glb pipeline's axis conversion - see
+    // `CHARACTER_SCALE`'s comment) - aligning -Z here pointed the model's back
+    // at the travel direction, making walking look like reverse/moonwalking.
+    let target_rotation = Quat::from_rotation_arc(Vec3::Z, horizontal.normalize());
+    let turn = (VISUAL_TURN_SPEED * time.delta_secs()).min(1.0);
+    transform.rotation = transform.rotation.slerp(target_rotation, turn);
 }
 
 type OrbitCameraQuery<'w> = (

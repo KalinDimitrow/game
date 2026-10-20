@@ -31,6 +31,12 @@ pub enum CharacterMovement {
 #[derive(Component)]
 pub struct Character;
 
+/// Marks the child entity holding the character's glTF scene, so movement
+/// systems can rotate it to face the direction of travel without touching
+/// `Character`'s own transform, whose rotation is locked for physics.
+#[derive(Component)]
+pub struct CharacterVisual;
+
 /// Orbit state for the camera following `Character`, driven by `CameraMovement::Pan`.
 #[derive(Component)]
 pub struct ThirdPersonCamera {
