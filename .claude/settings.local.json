@@ -96,7 +96,9 @@
       "Bash(git stash *)",
       "Bash(DISPLAY=:99 WGPU_BACKEND=vulkan CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game timeout 15 cargo run --bin game)",
       "Bash(echo \"exit:$?\")",
-      "Bash(pkill Xvfb)"
+      "Bash(pkill Xvfb)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo check)",
+      "Bash(tail -40 /tmp/game_run.log)"
     ]
   }
 }
