@@ -68,7 +68,27 @@
       "Bash(python3 -)",
       "Bash(xargs ls -la)",
       "Bash(find / -maxdepth 6 -iname \"*bevy-*examples*\")",
-      "Bash(cargo tree *)"
+      "Bash(cargo tree *)",
+      "WebFetch(domain:extensions.blender.org)",
+      "WebFetch(domain:developer.blender.org)",
+      "Bash(find /home/kalin -iname \"Character.glb\" 2>/dev/null)",
+      "Bash(chmod +x /home/kalin/Projects/game/tools/convert_dae_to_glb.sh)",
+      "Bash(unzip -l \"/home/kalin/Projects/game/raw_assets/models/characters/basic_character/Ch19_nonPBR.zip\")",
+      "Bash(unzip -l \"/home/kalin/Projects/game/raw_assets/models/characters/basic_character/Running.zip\")",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan cargo check)",
+      "Bash(find / -maxdepth 6 -type d -iname \"bevy_render-*\")",
+      "Read(//home/claude/.cargo/**)",
+      "Bash(find / -type d -iname \"*registry*src*\" -maxdepth 6)",
+      "Bash(grep -rn \"pub struct Screenshot\\\\|pub fn save_to_disk\\\\|impl Screenshot\" /home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_render-0.19.1/src/view/window/screenshot.rs 2>/dev/null | head -30)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan cargo build)",
+      "Read(//home/kalin/Projects/**)",
+      "Bash(python3 -c \"import numpy; print\\(numpy.__version__\\)\")",
+      "Bash(python3 -c \"import pygltflib; print\\(pygltflib.__version__\\)\")",
+      "Bash(python3 -m py_compile /home/kalin/Projects/game/tools/merge_gltf_animations.py)",
+      "Bash(grep -rn \"SkinnedMesh\\\\|inverse_bindposes\\\\|joint\" /home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_gltf-0.19.1/src/loader/mod.rs 2>/dev/null | head -30)",
+      "Read(//home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.19.1/src/render/**)",
+      "Read(//home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_render-0.19.1/src/mesh/**)",
+      "Bash(grep -n \"global_transform\\\\|GlobalTransform\\\\|inverse_bindpose\\\\|joint\" /home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.19.1/src/render/skin.rs | head -40)"
     ]
   }
 }

@@ -9,11 +9,13 @@ const JUMP_SPEED: f32 = 6.0;
 const MOUSE_SENSITIVITY: f32 = 0.005;
 const PITCH_LIMIT: f32 = 1.4;
 
-// Fox.glb's mesh-local bounding box is ~79 units tall (measured from the
-// glTF's accessor min/max, origin at its feet) vs. the capsule collider's
-// 1.8 (length 1.0 + 2 * radius 0.4) - this scale brings the model to the
-// same height as the capsule from the previous iteration.
-const FOX_SCALE: f32 = 1.8 / 79.03;
+// character.glb here is from the Blender FBX pipeline
+// (convert_fbx_to_glb.sh), which bakes the source .fbx's unit scale
+// directly into vertex data on import - mesh-local bounding box is
+// already ~1.61 units tall (meters), unlike the old assimp pipeline's
+// raw/un-unit-converted ~161 units. Scaled to match the capsule
+// collider's 1.8 (length 1.0 + 2 * radius 0.4).
+const CHARACTER_SCALE: f32 = 1.8 / 1.61;
 
 pub struct CharacterControllerPlugin;
 
@@ -26,14 +28,23 @@ impl Plugin for CharacterControllerPlugin {
             (
                 (move_character, apply_character_animation).chain(),
                 follow_character,
-                spawn_fox_visual_when_ready.run_if(not(resource_exists::<CharacterAnimations>)),
+                spawn_character_visual_when_ready.run_if(not(resource_exists::<CharacterAnimations>)),
             ),
         );
     }
 }
 
+// The mesh/skeleton and each animation are separate glTF assets (see
+// `CHARACTER_MESH_PATH` and friends) - Bevy matches clips to scene
+// entities by bone name, not by source file, so these just need to be
+// loaded independently and combined once all of them are ready.
 #[derive(Resource)]
-struct FoxHandle(Handle<Gltf>);
+struct CharacterGltfHandles {
+    mesh: Handle<Gltf>,
+    idle: Handle<Gltf>,
+    walking: Handle<Gltf>,
+    jumping: Handle<Gltf>,
+}
 
 #[derive(Resource)]
 struct CharacterAnimations {
@@ -59,8 +70,8 @@ fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>, level
         .insert(CharacterMovement::Jump, KeyCode::Space);
 
     // No visible mesh here - the capsule is purely the physics collider. The
-    // Fox model is spawned as a child once its glTF scene finishes loading
-    // (see `spawn_fox_visual_when_ready`).
+    // character model is spawned as a child once its glTF scene finishes
+    // loading (see `spawn_character_visual_when_ready`).
     commands.spawn((
         Character,
         CharacterAnimationState::default(),
@@ -78,32 +89,73 @@ fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>, level
         InputMap::default().with_dual_axis(CameraMovement::Pan, MouseMove::default()),
     ));
 
-    commands.insert_resource(FoxHandle(asset_server.load(FOX_PATH)));
+    commands.insert_resource(CharacterGltfHandles {
+        mesh: asset_server.load(CHARACTER_MESH_PATH),
+        idle: asset_server.load(CHARACTER_IDLE_PATH),
+        walking: asset_server.load(CHARACTER_WALKING_PATH),
+        jumping: asset_server.load(CHARACTER_JUMPING_PATH),
+    });
 }
 
-fn spawn_fox_visual_when_ready(
+fn spawn_character_visual_when_ready(
     mut commands: Commands,
-    fox_handle: Res<FoxHandle>,
+    gltf_handles: Res<CharacterGltfHandles>,
     asset_server: Res<AssetServer>,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
     character: Single<Entity, With<Character>>,
 ) {
-    if !asset_server.is_loaded_with_dependencies(&fox_handle.0) {
+    let handles = [
+        &gltf_handles.mesh,
+        &gltf_handles.idle,
+        &gltf_handles.walking,
+        &gltf_handles.jumping,
+    ];
+    if !handles.iter().all(|handle| asset_server.is_loaded_with_dependencies(*handle)) {
         return;
     }
 
-    let fox = gltfs
-        .get(&fox_handle.0)
-        .expect("fox glTF should be loaded by now");
+    let mesh_gltf = gltfs
+        .get(&gltf_handles.mesh)
+        .expect("character mesh glTF should be loaded by now");
+    let idle_gltf = gltfs
+        .get(&gltf_handles.idle)
+        .expect("idle glTF should be loaded by now");
+    let walking_gltf = gltfs
+        .get(&gltf_handles.walking)
+        .expect("walking glTF should be loaded by now");
+    let jumping_gltf = gltfs
+        .get(&gltf_handles.jumping)
+        .expect("jumping glTF should be loaded by now");
+
+    // Each animation-only file has exactly one clip, named after its own
+    // source file by the conversion script - take whichever one it is
+    // rather than hardcoding an exact internal name.
+    let idle_clip = idle_gltf
+        .named_animations
+        .values()
+        .next()
+        .expect("idle glTF should have an animation clip")
+        .clone();
+    let walking_clip = walking_gltf
+        .named_animations
+        .values()
+        .next()
+        .expect("walking glTF should have an animation clip")
+        .clone();
+    let jumping_clip = jumping_gltf
+        .named_animations
+        .values()
+        .next()
+        .expect("jumping glTF should have an animation clip")
+        .clone();
 
     // Order matches `CharacterAnimationState`'s variant order (Idle, Walking,
-    // Jumping) - "Survey" is the closest thing Fox.glb has to an idle pose.
-    let (graph, node_indices) = AnimationGraph::from_clips([
-        fox.named_animations["Survey"].clone(),
-        fox.named_animations["Walk"].clone(),
-        fox.named_animations["Run"].clone(),
-    ]);
+    // Jumping). Bevy matches each clip's curves to scene entities by bone
+    // name (AnimationTargetId), not by which file the clip came from, so
+    // clips loaded from entirely separate glTF files apply correctly to the
+    // mesh's skeleton once spawned below.
+    let (graph, node_indices) = AnimationGraph::from_clips([idle_clip, walking_clip, jumping_clip]);
     let graph_handle = graphs.add(graph);
 
     commands.insert_resource(CharacterAnimations {
@@ -115,19 +167,21 @@ fn spawn_fox_visual_when_ready(
         parent
             .spawn((
                 WorldAssetRoot(
-                    fox.default_scene
+                    mesh_gltf
+                        .default_scene
                         .clone()
-                        .expect("fox glTF should have a default scene"),
+                        .expect("character mesh glTF should have a default scene"),
                 ),
-                Transform::from_xyz(0.0, -0.9, 0.0).with_scale(Vec3::splat(FOX_SCALE)),
+                Transform::from_xyz(0.0, -0.9, 0.0).with_scale(Vec3::splat(CHARACTER_SCALE)),
             ))
-            .observe(on_fox_scene_ready);
+            .observe(on_character_scene_ready);
     });
 }
 
-// Fires once the Fox's scene (and its `AnimationPlayer`) has actually spawned
-// - glTF scene loading is async, so this can't just happen in the system above.
-fn on_fox_scene_ready(
+// Fires once the character's scene (and its `AnimationPlayer`) has actually
+// spawned - glTF scene loading is async, so this can't just happen in the
+// system above.
+fn on_character_scene_ready(
     _ready: On<WorldInstanceReady>,
     mut commands: Commands,
     animations: Res<CharacterAnimations>,
@@ -205,7 +259,7 @@ fn move_character(
 }
 
 // Separate `Query`s rather than `Single`s here on purpose: the animation
-// player doesn't exist until the Fox's glTF scene finishes loading (which can
+// player doesn't exist until the character's glTF scene finishes loading (which can
 // take several frames), so "no match yet" is an expected, non-error state -
 // `Single` would panic on it instead of just skipping.
 fn apply_character_animation(
