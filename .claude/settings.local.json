@@ -88,7 +88,15 @@
       "Bash(grep -rn \"SkinnedMesh\\\\|inverse_bindposes\\\\|joint\" /home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_gltf-0.19.1/src/loader/mod.rs 2>/dev/null | head -30)",
       "Read(//home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.19.1/src/render/**)",
       "Read(//home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_render-0.19.1/src/mesh/**)",
-      "Bash(grep -n \"global_transform\\\\|GlobalTransform\\\\|inverse_bindpose\\\\|joint\" /home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.19.1/src/render/skin.rs | head -40)"
+      "Bash(grep -n \"global_transform\\\\|GlobalTransform\\\\|inverse_bindpose\\\\|joint\" /home/claude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.19.1/src/render/skin.rs | head -40)",
+      "Bash(curl -s https://crates.io/api/v1/crates/avian3d/0.8.0/dependencies)",
+      "Bash(curl -s https://crates.io/api/v1/crates/leafwing-input-manager/0.22.0/dependencies)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo check --message-format=short)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo test --message-format=short)",
+      "Bash(git stash *)",
+      "Bash(DISPLAY=:99 WGPU_BACKEND=vulkan CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game timeout 15 cargo run --bin game)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(pkill Xvfb)"
     ]
   }
 }
