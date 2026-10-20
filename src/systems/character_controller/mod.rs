@@ -2,7 +2,7 @@ use avian3d::prelude::{Collider, LinearVelocity, LockedAxes, RigidBody};
 use bevy::world_serialization::WorldInstanceReady;
 
 use crate::prelude::*;
-use crate::systems::terrain::{LevelConfig, spawn_terrain};
+use crate::systems::terrain::spawn_terrain;
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;
@@ -35,25 +35,6 @@ impl Plugin for CharacterControllerPlugin {
             ),
         );
     }
-}
-
-// The mesh/skeleton and each animation are separate glTF assets (see
-// `CHARACTER_MESH_PATH` and friends) - Bevy matches clips to scene
-// entities by bone name, not by source file, so these just need to be
-// loaded independently and combined once all of them are ready.
-#[derive(Resource)]
-struct CharacterGltfHandles {
-    mesh: Handle<Gltf>,
-    idle: Handle<Gltf>,
-    walking: Handle<Gltf>,
-    jumping: Handle<Gltf>,
-}
-
-#[derive(Resource)]
-struct CharacterAnimations {
-    // Indexed by `CharacterAnimationState` variant order: Idle, Walking, Jumping.
-    indices: Vec<AnimationNodeIndex>,
-    graph_handle: Handle<AnimationGraph>,
 }
 
 fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>, level: Res<LevelConfig>) {
