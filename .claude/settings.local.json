@@ -102,7 +102,28 @@
       "Read(//home/claude/Projects/game/docs/**)",
       "Read(//home/claude/Projects/game/**)",
       "Read(//home/claude/Projects/**)",
-      "Read(//home/claude/**)"
+      "Read(//home/claude/**)",
+      "Bash(gh repo *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(command -v blender)",
+      "Bash(blender --version)",
+      "Bash(command -v bun)",
+      "Bash(bun --version)",
+      "Bash(echo \"blender_exit:$?\")",
+      "Bash(echo \"bun_exit:$?\")",
+      "Bash(./tools/convert_fbx_to_glb.sh)",
+      "Bash(blender --background --python-expr \"import sys; print\\(sys.executable\\); print\\(sys.version\\); [print\\(p\\) for p in sys.path]\")",
+      "Bash(sudo apt-get install -y python3-numpy)",
+      "Bash(apt-get install *)",
+      "Read(//usr/share/blender/scripts/addons/io_scene_gltf2/**)",
+      "Read(//usr/share/blender/scripts/addons/io_scene_fbx/**)",
+      "Bash(blender --background --python-expr \"import numpy; print\\('numpy', numpy.__version__\\)\")",
+      "WebFetch(domain:download.blender.org)",
+      "WebFetch(domain:www.blender.org)",
+      "Bash(curl -s --max-time 15 https://download.blender.org/release/)",
+      "Bash(curl -sv --max-time 10 https://download.blender.org/release/)",
+      "Bash(cat /home/kalin/Projects/claude-agent/init-firewall.sh 2>/dev/null | head -60)",
+      "Bash(curl -s --max-time 15 \"https://api.github.com/repos/blender/blender/tags?per_page=30\")"
     ]
   }
 }
