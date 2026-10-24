@@ -1,8 +1,10 @@
 //! Data-driven level/terrain description: grid size, per-cell tile/height/
 //! walkability overrides, and points of interest (spawn points, objectives).
 //! Parsed from RON at `LEVEL_PATH`, same read/parse/validate shape as
-//! `button_config`/`display_config` - see the cleanup backlog's "unify
-//! config loading" entry now that a third one has shown up.
+//! `utils::system_config`'s readers - kept separate rather than folded into
+//! `SystemConfig` since it lives in a different directory (`data/levels/`,
+//! not `data/config/`) and is consumed differently (inserted directly as its
+//! own resource, not read ahead of `App` construction).
 
 use bevy::ecs::error::BevyError;
 use serde::Deserialize;

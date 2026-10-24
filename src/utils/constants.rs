@@ -2,9 +2,20 @@
 //! individual asset paths. Gameplay tuning constants (speeds, grid size, etc.)
 //! stay local to the system that uses them; only paths live here.
 
+use crate::utils::system_config::{button_config_reader, display_config_reader, ConfigReader};
+
 pub const BUTTON_CONFIG_PATH: &str = "data/config/button_config.ron";
 pub const DISPLAY_CONFIG_PATH: &str = "data/config/display.ron";
 pub const LEVEL_PATH: &str = "data/levels/level_01.ron";
+
+// Every file `system_config_reader` knows how to read, paired with the
+// reader that parses it - same (name, value) shape as `KEYCODES` in
+// `utils::system_config`. Every reader shares `ConfigReader`'s signature, so
+// `system_config_reader` can call the one next to a given path directly
+// instead of matching on some tag to find it. Adding a new config file is a
+// one-line change here rather than touching the reader itself.
+pub const CONFIG_READERS: &[(&str, ConfigReader)] =
+    &[(BUTTON_CONFIG_PATH, button_config_reader), (DISPLAY_CONFIG_PATH, display_config_reader)];
 
 // Passed to `AssetPlugin { file_path, .. }` in `main.rs`. The `CHARACTER_*`
 // paths below are relative to this root, not to the crate root -

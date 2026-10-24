@@ -17,7 +17,7 @@ impl Plugin for TerrainPlugin {
 }
 
 // Fallible Startup system: a missing/malformed level file is a content-author
-// problem, not a bug - same reasoning as `load_button_config`/`load_display_config`.
+// problem, not a bug - same reasoning as `load_button_config`/`system_config_reader`.
 // `pub(crate)` rather than private: `character_controller::spawn_character` orders
 // itself after this system, since it reads the `LevelConfig` resource inserted here.
 pub(crate) fn spawn_terrain(
