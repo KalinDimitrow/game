@@ -9,12 +9,12 @@ fn main() -> Result<(), BevyError> {
     // `DefaultPlugins`, so the size has to be known up front rather than
     // applied as a Startup system (which would resize an already-open window).
     let system_config = system_config_reader(CONFIG_READERS)?;
-    let SystemConfig { button: button_config, display: display_config } = system_config;
-    let resolution = display_config.resolution.clone();
+    let SystemConfig { button: button_config, graphics: graphics_config } = system_config;
+    let resolution = graphics_config.resolution.clone();
 
     App::new()
         .insert_resource(button_config)
-        .insert_resource(display_config)
+        .insert_resource(graphics_config)
         .add_plugins(
             DefaultPlugins
                 .set(AssetPlugin {
