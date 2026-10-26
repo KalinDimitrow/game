@@ -23,7 +23,7 @@ Once you're spawning more than a handful of hardcoded shapes, you need files: te
 
 ## Used in `game`
 
-`systems/terrain/mod.rs::spawn_test_world` spawns `DynamicWorldRoot(asset_server.load("worlds/test_world.scn.ron"))` — `scene/world_serialization.rs`'s loading half, same as `WorldAssetRoot` already does per-tile for glTF scenes (`spawn_terrain`) and per-character-mesh (`character_controller`). (Earlier revisions of this note pointed at `load_scene_example.scn.ron`/`main.rs` and a BSN `three_d_scene_example.rs` — both gone; this is the current reference.)
+`systems/terrain/mod.rs::spawn_test_world` spawns `DynamicWorldRoot(asset_server.load("worlds/test_world.scn.ron"))` — `scene/world_serialization.rs`'s loading half. This is now the *only* way terrain/character/camera get into the world: the old Rust-coded `spawn_terrain`/`spawn_character` (which used to do the glTF-scene-per-tile loading directly) were deleted 2026-10-26 once the RON version covered the same ground. (Earlier revisions of this note pointed at `load_scene_example.scn.ron`/`main.rs` and a BSN `three_d_scene_example.rs` — both gone too; this is the current reference.)
 
 ### Experiment: describing a whole scene (terrain + physics + light + character + camera) in one `.scn.ron`
 

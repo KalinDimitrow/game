@@ -1,8 +1,6 @@
-use avian3d::prelude::{Collider, LinearVelocity, LockedAxes, RigidBody};
+use avian3d::prelude::LinearVelocity;
 
 use crate::prelude::*;
-// Only used by `spawn_character`'s `.after(spawn_terrain)`, currently disabled - see `CharacterControllerPlugin`.
-// use crate::systems::terrain::spawn_terrain;
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;
@@ -25,11 +23,6 @@ pub struct CharacterControllerPlugin;
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<CharacterMovement>::default());
-        // Disabled along with `spawn_terrain` (see `TerrainPlugin`) while
-        // `test_world.scn.ron` provides the character/camera instead - running
-        // both would spawn two `Character`/`Camera3d` entities, which the
-        // `Single<...>` queries below can't handle. Function stays intact.
-        // app.add_systems(Startup, spawn_character.after(spawn_terrain));
         app.add_systems(Startup, load_character_gltf_handles);
         app.add_observer(attach_character_movement_input);
         app.add_observer(attach_camera_movement_input);
@@ -53,11 +46,10 @@ impl Plugin for CharacterControllerPlugin {
 }
 
 // Attaches input bindings the instant `Character`/`Camera3d` is actually
-// inserted, regardless of whether it was spawned by `spawn_character` or
-// loaded from `test_world.scn.ron` - `InputMap` itself is never authored as
-// RON data (its fields are boxed trait objects, not something to hand-write),
-// so this is the bridge that makes a RON-loaded character/camera controllable
-// without putting input config in the scene file.
+// inserted - `InputMap` itself is never authored as RON data (its fields are
+// boxed trait objects, not something to hand-write), so this is the bridge
+// that makes `test_world.scn.ron`'s character/camera controllable without
+// putting input config in the scene file.
 //
 // Observers rather than polling `Added<_>` every frame: each component type
 // gets its own discrete, one-time event here (no other async condition to
@@ -101,11 +93,9 @@ fn sync_character_visual_transform(
     visual.translation = character.translation + CHARACTER_VISUAL_OFFSET;
 }
 
-// Loads the mesh + 3 animation-only glTF files regardless of whether
-// `spawn_character` or `test_world.scn.ron` provides the `Character`/
-// `CharacterVisual` entities - `spawn_character_visual_when_ready` below
-// needs these either way, so this is unconditional rather than tied to
-// whichever spawn path is active.
+// Loads the mesh + 3 animation-only glTF files - `spawn_character_visual_when_ready`
+// below needs these regardless of whether `Character`/`CharacterVisual` came
+// from `test_world.scn.ron`, so this loads unconditionally at `Startup`.
 fn load_character_gltf_handles(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(CharacterGltfHandles {
         mesh: asset_server.load(CHARACTER_MESH_PATH),
@@ -113,45 +103,6 @@ fn load_character_gltf_handles(mut commands: Commands, asset_server: Res<AssetSe
         walking: asset_server.load(CHARACTER_WALKING_PATH),
         jumping: asset_server.load(CHARACTER_JUMPING_PATH),
     });
-}
-
-fn spawn_character(mut commands: Commands, level: Res<LevelConfig>) {
-    // Falls back to the grid center if the level doesn't define a `PlayerSpawn`
-    // POI - a level file omitting it is plausible author input, not a bug.
-    let (grid_x, grid_z) = level
-        .player_spawn()
-        .unwrap_or((level.grid_width / 2, level.grid_depth / 2));
-    let spawn = Vec3::new(grid_x as f32 * level.cell_size, 3.0, grid_z as f32 * level.cell_size);
-
-    let mut movement_input = InputMap::<CharacterMovement>::default();
-    movement_input
-        .insert(CharacterMovement::Left, KeyCode::KeyA)
-        .insert(CharacterMovement::Right, KeyCode::KeyD)
-        .insert(CharacterMovement::Forward, KeyCode::KeyW)
-        .insert(CharacterMovement::Backward, KeyCode::KeyS)
-        .insert(CharacterMovement::Jump, KeyCode::Space);
-
-    // No visible mesh here - the capsule is purely the physics collider. The
-    // character model is spawned as a child once its glTF scene finishes
-    // loading (see `spawn_character_visual_when_ready`).
-    commands.spawn((
-        Character,
-        CharacterAnimationState::default(),
-        RigidBody::Dynamic,
-        Collider::capsule(0.4, 1.0),
-        LockedAxes::ROTATION_LOCKED,
-        Transform::from_translation(spawn),
-        movement_input,
-    ));
-
-    commands.spawn((
-        Camera3d::default(),
-        ThirdPersonCamera::default(),
-        Transform::from_xyz(spawn.x, spawn.y + 2.0, spawn.z + 6.0).looking_at(spawn, Vec3::Y),
-        InputMap::default().with_dual_axis(CameraMovement::Pan, MouseMove::default()),
-    ));
-    // `CharacterGltfHandles` is loaded unconditionally by `load_character_gltf_handles`,
-    // not here - see its doc comment.
 }
 
 // TODO(second refactoring wave): this and `attach_character_animation_graph`
@@ -367,9 +318,9 @@ fn apply_character_animation(
 }
 
 // Rotates the visual child (not `Character` itself, whose rotation is locked
-// for physics - see `LockedAxes::ROTATION_LOCKED` in `spawn_character`) to
-// face the current horizontal movement direction, slerping toward it so
-// direction changes turn smoothly instead of snapping.
+// for physics - see the `LockedAxes` component on `Character` in
+// `test_world.scn.ron`) to face the current horizontal movement direction,
+// slerping toward it so direction changes turn smoothly instead of snapping.
 fn orient_character_visual(
     character: Single<&LinearVelocity, With<Character>>,
     mut visual: Query<&mut Transform, With<CharacterVisual>>,
