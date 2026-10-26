@@ -126,7 +126,8 @@
       "Bash(curl -s --max-time 15 \"https://api.github.com/repos/blender/blender/tags?per_page=30\")",
       "Bash(mkdir -p /home/kalin/Projects/game/src/utils/system_config)",
       "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo build --quiet)",
-      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo test --quiet)"
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo test --quiet)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo build)"
     ]
   }
 }
