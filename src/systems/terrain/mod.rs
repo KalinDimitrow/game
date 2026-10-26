@@ -12,7 +12,12 @@ pub struct TerrainPlugin;
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PhysicsPlugins::default());
-        app.add_systems(Startup, spawn_terrain);
+        // Disabled while testing `test_world.scn.ron` as a full replacement for
+        // the grid - `spawn_test_world` below loads the same terrain (plus
+        // character/camera) from RON instead. Re-enable once that comparison
+        // is done; the function stays intact either way.
+        // app.add_systems(Startup, spawn_terrain);
+        app.add_systems(Startup, spawn_test_world);
     }
 }
 
@@ -108,4 +113,18 @@ pub(crate) fn spawn_terrain(
 
     commands.insert_resource(level);
     Ok(())
+}
+
+// Temporary smoke test for `data/assets/worlds/test_world.scn.ron` - the whole
+// scene (terrain tiles, their physics, the light, and now a character/camera)
+// described as `DynamicWorld` RON instead of `spawn_terrain`/`spawn_character`'s
+// Rust. No longer reads `LevelConfig` - the RON's own entities carry absolute
+// positions, so this just spawns at the origin rather than computing an offset
+// (`LevelConfig` isn't even a resource right now, since `spawn_terrain` - the
+// only thing that inserts it - is disabled above).
+fn spawn_test_world(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        Transform::IDENTITY,
+        DynamicWorldRoot(asset_server.load("worlds/test_world.scn.ron")),
+    ));
 }

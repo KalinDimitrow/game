@@ -1,8 +1,8 @@
 use avian3d::prelude::{Collider, LinearVelocity, LockedAxes, RigidBody};
-use bevy::world_serialization::WorldInstanceReady;
 
 use crate::prelude::*;
-use crate::systems::terrain::spawn_terrain;
+// Only used by `spawn_character`'s `.after(spawn_terrain)`, currently disabled - see `CharacterControllerPlugin`.
+// use crate::systems::terrain::spawn_terrain;
 
 const MOVE_SPEED: f32 = 6.0;
 const JUMP_SPEED: f32 = 6.0;
@@ -25,19 +25,97 @@ pub struct CharacterControllerPlugin;
 impl Plugin for CharacterControllerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(InputManagerPlugin::<CharacterMovement>::default());
-        app.add_systems(Startup, spawn_character.after(spawn_terrain));
+        // Disabled along with `spawn_terrain` (see `TerrainPlugin`) while
+        // `test_world.scn.ron` provides the character/camera instead - running
+        // both would spawn two `Character`/`Camera3d` entities, which the
+        // `Single<...>` queries below can't handle. Function stays intact.
+        // app.add_systems(Startup, spawn_character.after(spawn_terrain));
+        app.add_systems(Startup, load_character_gltf_handles);
+        app.add_observer(attach_character_movement_input);
+        app.add_observer(attach_camera_movement_input);
         app.add_systems(
             Update,
             (
-                (move_character, apply_character_animation, orient_character_visual).chain(),
+                (
+                    move_character,
+                    apply_character_animation,
+                    sync_character_visual_transform,
+                    orient_character_visual,
+                )
+                    .chain(),
                 follow_character,
-                spawn_character_visual_when_ready.run_if(not(resource_exists::<CharacterAnimations>)),
+                spawn_character_visual_when_ready
+                    .run_if(|animations: Option<Res<CharacterAnimations>>| animations.is_none()),
+                attach_character_animation_graph,
             ),
         );
     }
 }
 
-fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>, level: Res<LevelConfig>) {
+// Attaches input bindings the instant `Character`/`Camera3d` is actually
+// inserted, regardless of whether it was spawned by `spawn_character` or
+// loaded from `test_world.scn.ron` - `InputMap` itself is never authored as
+// RON data (its fields are boxed trait objects, not something to hand-write),
+// so this is the bridge that makes a RON-loaded character/camera controllable
+// without putting input config in the scene file.
+//
+// Observers rather than polling `Added<_>` every frame: each component type
+// gets its own discrete, one-time event here (no other async condition to
+// wait on, unlike `attach_character_animation_graph` below), which is exactly
+// what observers are for - and `Camera3d` is Bevy's type, not ours, so a
+// component hook (single-slot, exclusive) would risk colliding with one Bevy
+// itself adds in a future version. Two observers, not one, because
+// `On<Add<T>>` is monomorphic over a single component type.
+fn attach_character_movement_input(trigger: On<Add<Character>>, mut commands: Commands) {
+    let mut movement_input = InputMap::<CharacterMovement>::default();
+    movement_input
+        .insert(CharacterMovement::Left, KeyCode::KeyA)
+        .insert(CharacterMovement::Right, KeyCode::KeyD)
+        .insert(CharacterMovement::Forward, KeyCode::KeyW)
+        .insert(CharacterMovement::Backward, KeyCode::KeyS)
+        .insert(CharacterMovement::Jump, KeyCode::Space);
+    commands.entity(trigger.entity).insert(movement_input);
+}
+
+fn attach_camera_movement_input(trigger: On<Add<Camera3d>>, mut commands: Commands) {
+    commands.entity(trigger.entity).insert(
+        InputMap::<CameraMovement>::default().with_dual_axis(CameraMovement::Pan, MouseMove::default()),
+    );
+}
+
+// Keeps `CharacterVisual` positioned on `Character` without relying on ECS
+// parent/child + `GlobalTransform` propagation - confirmed (via a throwaway
+// diagnostic, since removed) that propagation never recomputed a
+// `DynamicWorld`-spawned mesh parented under a `RigidBody`, even after 15+
+// seconds and forcing `Transform` to re-register as changed. Matches
+// avian3d's own documented stance on rigid-body hierarchies being flat:
+// "write your own system to handle hierarchies differently." `Character`
+// never rotates (`LockedAxes::ROTATION_LOCKED`), so a plain translation
+// offset is enough - no rotation composition needed.
+const CHARACTER_VISUAL_OFFSET: Vec3 = Vec3::new(0.0, -0.9, 0.0);
+
+fn sync_character_visual_transform(
+    character: Single<&Transform, (With<Character>, Without<CharacterVisual>)>,
+    mut visual: Single<&mut Transform, (With<CharacterVisual>, Without<Character>)>,
+) {
+    visual.translation = character.translation + CHARACTER_VISUAL_OFFSET;
+}
+
+// Loads the mesh + 3 animation-only glTF files regardless of whether
+// `spawn_character` or `test_world.scn.ron` provides the `Character`/
+// `CharacterVisual` entities - `spawn_character_visual_when_ready` below
+// needs these either way, so this is unconditional rather than tied to
+// whichever spawn path is active.
+fn load_character_gltf_handles(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(CharacterGltfHandles {
+        mesh: asset_server.load(CHARACTER_MESH_PATH),
+        idle: asset_server.load(CHARACTER_IDLE_PATH),
+        walking: asset_server.load(CHARACTER_WALKING_PATH),
+        jumping: asset_server.load(CHARACTER_JUMPING_PATH),
+    });
+}
+
+fn spawn_character(mut commands: Commands, level: Res<LevelConfig>) {
     // Falls back to the grid center if the level doesn't define a `PlayerSpawn`
     // POI - a level file omitting it is plausible author input, not a bug.
     let (grid_x, grid_z) = level
@@ -72,15 +150,16 @@ fn spawn_character(mut commands: Commands, asset_server: Res<AssetServer>, level
         Transform::from_xyz(spawn.x, spawn.y + 2.0, spawn.z + 6.0).looking_at(spawn, Vec3::Y),
         InputMap::default().with_dual_axis(CameraMovement::Pan, MouseMove::default()),
     ));
-
-    commands.insert_resource(CharacterGltfHandles {
-        mesh: asset_server.load(CHARACTER_MESH_PATH),
-        idle: asset_server.load(CHARACTER_IDLE_PATH),
-        walking: asset_server.load(CHARACTER_WALKING_PATH),
-        jumping: asset_server.load(CHARACTER_JUMPING_PATH),
-    });
+    // `CharacterGltfHandles` is loaded unconditionally by `load_character_gltf_handles`,
+    // not here - see its doc comment.
 }
 
+// TODO(second refactoring wave): this and `attach_character_animation_graph`
+// both run every `Update` frame and early-return until their async
+// dependencies are ready - works, but the planned fix is a `GameState::Loading`
+// state so both become `run_if(in_state(Loading))` with no internal
+// early-return needed. See `docs/Game/01 Cleanup Backlog.md` (2026-10-26) and
+// `docs/Bevy/15 State Management.md`.
 fn spawn_character_visual_when_ready(
     mut commands: Commands,
     gltf_handles: Res<CharacterGltfHandles>,
@@ -88,6 +167,7 @@ fn spawn_character_visual_when_ready(
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
     character: Single<Entity, With<Character>>,
+    existing_visual: Query<(), With<CharacterVisual>>,
 ) {
     let handles = [
         &gltf_handles.mesh,
@@ -99,9 +179,6 @@ fn spawn_character_visual_when_ready(
         return;
     }
 
-    let mesh_gltf = gltfs
-        .get(&gltf_handles.mesh)
-        .expect("character mesh glTF should be loaded by now");
     let idle_gltf = gltfs
         .get(&gltf_handles.idle)
         .expect("idle glTF should be loaded by now");
@@ -147,9 +224,17 @@ fn spawn_character_visual_when_ready(
         graph_handle,
     });
 
-    commands.entity(*character).with_children(|parent| {
-        parent
-            .spawn((
+    // `test_world.scn.ron` provides its own `CharacterVisual` (as a standalone
+    // entity, not a child - see `sync_character_visual_transform`), already
+    // pointed at the same mesh glTF via its own `WorldAssetRoot`. Only spawn
+    // one here if nothing already did - `attach_character_animation_graph`
+    // below picks up either version's `AnimationPlayer` once it appears.
+    if existing_visual.is_empty() {
+        let mesh_gltf = gltfs
+            .get(&gltf_handles.mesh)
+            .expect("character mesh glTF should be loaded by now");
+        commands.entity(*character).with_children(|parent| {
+            parent.spawn((
                 CharacterVisual,
                 WorldAssetRoot(
                     mesh_gltf
@@ -158,30 +243,39 @@ fn spawn_character_visual_when_ready(
                         .expect("character mesh glTF should have a default scene"),
                 ),
                 Transform::from_xyz(0.0, -0.9, 0.0).with_scale(Vec3::splat(CHARACTER_SCALE)),
-            ))
-            .observe(on_character_scene_ready);
-    });
+            ));
+        });
+    }
 }
 
-// Fires once the character's scene (and its `AnimationPlayer`) has actually
-// spawned - glTF scene loading is async, so this can't just happen in the
-// system above.
-fn on_character_scene_ready(
-    _ready: On<WorldInstanceReady>,
+// Picks up the character's `AnimationPlayer` once its glTF scene has
+// actually finished spawning (async, so can't happen in the system above) -
+// queries for "has a player but no graph yet" instead of `Added<AnimationPlayer>`,
+// because `Added` is only true for the one frame the component appeared, and
+// that frame isn't guaranteed to be the same frame `CharacterAnimations`
+// finishes building (it depends on 3 separate async glTF loads) - confirmed
+// via a throwaway diagnostic that the player existed in the world the whole
+// time, just never on the same frame as `Added` and a ready `CharacterAnimations`
+// at once. No `Added<AnimationGraphHandle>`-style window to miss this way.
+fn attach_character_animation_graph(
     mut commands: Commands,
-    animations: Res<CharacterAnimations>,
-    player: Single<(Entity, &mut AnimationPlayer)>,
+    animations: Option<Res<CharacterAnimations>>,
+    mut players: Query<(Entity, &mut AnimationPlayer), Without<AnimationGraphHandle>>,
 ) {
-    let (entity, mut player) = player.into_inner();
-    let mut transitions = AnimationTransitions::new();
-    transitions
-        .play(&mut player, animations.indices[0], std::time::Duration::ZERO)
-        .repeat();
+    let Some(animations) = animations else {
+        return;
+    };
+    for (entity, mut player) in &mut players {
+        let mut transitions = AnimationTransitions::new();
+        transitions
+            .play(&mut player, animations.indices[0], std::time::Duration::ZERO)
+            .repeat();
 
-    commands
-        .entity(entity)
-        .insert(AnimationGraphHandle(animations.graph_handle.clone()))
-        .insert(transitions);
+        commands
+            .entity(entity)
+            .insert(AnimationGraphHandle(animations.graph_handle.clone()))
+            .insert(transitions);
+    }
 }
 
 fn move_character(

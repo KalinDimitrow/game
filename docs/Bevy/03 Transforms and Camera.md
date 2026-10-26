@@ -23,7 +23,13 @@ Before anything can be meaningfully rendered, you need to place it in space and 
 
 ## Used in `game`
 
-`src/systems/input.rs::pan_camera` rotates the camera around `Vec3::ZERO` using `ActionState<CameraMovement>` from `leafwing-input-manager` — a hand-rolled, simplified cousin of `camera/pan_orbit_camera_minimal.rs`.
+`character_controller/mod.rs::follow_character` is the current camera controller — a hand-rolled, simplified cousin of `camera/pan_orbit_camera_minimal.rs`, orbiting around `Character`'s position using `ActionState<CameraMovement>` from `leafwing-input-manager`. (An earlier `src/systems/input.rs::pan_camera`, orbiting a fixed `Vec3::ZERO`, is gone — this note was stale.)
+
+### Gotcha: `GlobalTransform` doesn't reliably propagate to a non-physics child of a `RigidBody`
+
+Hit this giving the player character a visual mesh as a `ChildOf` child of its (physics-driven) capsule, per [[06 Assets and Scenes]]'s RON-scene experiment — though it's not RON-specific, it'd bite the same way hand-coded. The capsule's own `GlobalTransform` stays correct every frame (avian3d syncs it directly from the physics solver), but the *child* mesh's `GlobalTransform` never got recomputed by Bevy's standard hierarchy propagation — confirmed stuck at its initial value for 15+ seconds, even after forcibly re-marking the child's `Transform` as `Changed` every frame. A sibling entity (the camera, parented only to a static root) propagated fine the whole time, isolating the problem to children of a *moving rigid body* specifically.
+
+`avian3d`'s own docs for `PhysicsTransformPlugin` say as much directly: *"the engine treats nested rigid bodies as a flat structure... moving the parent will not affect the child... write your own system to handle hierarchies differently."* Fix: don't rely on `ChildOf`/propagation for anything visual attached to a `RigidBody` — make it a standalone entity and write a plain system that copies the parent's `Transform` across every frame (see `character_controller::sync_character_visual_transform`).
 
 ## Where this fits
 

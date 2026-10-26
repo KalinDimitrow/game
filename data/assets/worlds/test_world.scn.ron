@@ -1,0 +1,205 @@
+// Smaller stand-in for `level_01.ron`'s 280x160 grid: 3x2 tiles instead of
+// 44,800, each scaled 100x in X/Z (not Y, to avoid making a thin flat tile
+// 100x thicker too) and spaced 100 apart so they still tile edge-to-edge -
+// same total-footprint idea as the full grid, far fewer entities. Each tile
+// carries its own `ColliderConstructor` sized to 1x0.1x1 (unscaled) rather
+// than one collider spanning the whole grid - avian3d auto-scales a
+// collider by the entity's own `Transform.scale` (confirmed in
+// `avian3d::collision::collider::backend`: "Updates collider scale based on
+// `Transform` scale"), so the same 100x scale already on each tile for the
+// mesh stretches its collider to match, no separate entity needed.
+//
+// Also carries a character (entity 8) and third-person camera (entity 9),
+// positioned near the grid's center - `Character`/`CharacterVisual`/
+// `ThirdPersonCamera`/`CharacterAnimationState` only became reflectable once
+// `Reflect`/`#[reflect(Component)]` were added to them in `components/mod.rs`.
+// `InputMap` is deliberately NOT here - it's reflectable, but its fields are
+// `HashMap<Action, Vec<Box<dyn Buttonlike>>>` (boxed trait objects), not
+// something to hand-author - `attach_character_input` in
+// `character_controller/mod.rs` attaches it in Rust instead, reactively,
+// to whichever entity has `Character`/`Camera3d` regardless of where it
+// came from.
+//
+// Known gaps:
+// - No checkerboard tint (`StandardMaterial` has no RON-authorable form -
+//   every tile renders with `ground_tile.glb`'s own baked-in material).
+// - The character's visual mesh (entity 10) is here - same `WorldAssetRoot`
+//   pointing at a glTF scene as every tile - but it's a standalone entity,
+//   NOT a `ChildOf` the character. Avian3d's own docs say rigid-body
+//   hierarchies are treated as flat ("moving the parent will not affect the
+//   child... write your own system to handle hierarchies differently"), and
+//   that's confirmed here: with `ChildOf` wired up, the mesh's
+//   `GlobalTransform` never updated past its initial (wrong) value, even
+//   after 15+ seconds. `sync_character_visual_transform` in
+//   `character_controller/mod.rs` now does that sync manually every frame
+//   instead of relying on hierarchy propagation.
+// - Still static/un-animated. The real `spawn_character_visual_when_ready`
+//   loads 3 more glTF files (idle/walking/jumping) and builds an
+//   `AnimationGraph` from clips spread across all of them at runtime; that
+//   combination step has no RON equivalent, so this mesh just renders in its
+//   default bind pose.
+(
+  resources: {},
+  entities: {
+    1: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 0.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (100.0, 1.0, 100.0),
+        ),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/terrain/ground_tile.glb#Scene0")),
+        "RigidBody": Static,
+        "ColliderConstructor": Cuboid(
+          x_length: 1.0,
+          y_length: 0.1,
+          z_length: 1.0,
+        ),
+      },
+    ),
+    2: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (100.0, 0.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (100.0, 1.0, 100.0),
+        ),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/terrain/ground_tile.glb#Scene0")),
+        "RigidBody": Static,
+        "ColliderConstructor": Cuboid(
+          x_length: 1.0,
+          y_length: 0.1,
+          z_length: 1.0,
+        ),
+      },
+    ),
+    3: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (200.0, 0.0, 0.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (100.0, 1.0, 100.0),
+        ),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/terrain/ground_tile.glb#Scene0")),
+        "RigidBody": Static,
+        "ColliderConstructor": Cuboid(
+          x_length: 1.0,
+          y_length: 0.1,
+          z_length: 1.0,
+        ),
+      },
+    ),
+    4: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 0.0, 100.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (100.0, 1.0, 100.0),
+        ),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/terrain/ground_tile.glb#Scene0")),
+        "RigidBody": Static,
+        "ColliderConstructor": Cuboid(
+          x_length: 1.0,
+          y_length: 0.1,
+          z_length: 1.0,
+        ),
+      },
+    ),
+    5: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (100.0, 0.0, 100.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (100.0, 1.0, 100.0),
+        ),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/terrain/ground_tile.glb#Scene0")),
+        "RigidBody": Static,
+        "ColliderConstructor": Cuboid(
+          x_length: 1.0,
+          y_length: 0.1,
+          z_length: 1.0,
+        ),
+      },
+    ),
+    6: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (200.0, 0.0, 100.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (100.0, 1.0, 100.0),
+        ),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/terrain/ground_tile.glb#Scene0")),
+        "RigidBody": Static,
+        "ColliderConstructor": Cuboid(
+          x_length: 1.0,
+          y_length: 0.1,
+          z_length: 1.0,
+        ),
+      },
+    ),
+    7: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (0.0, 1.0, 0.0),
+          rotation: (-0.5457440506531873, 0.3705982444931908, 0.29207335220103636, 0.692469154034507),
+          scale: (1.0, 1.0, 1.0),
+        ),
+        "bevy_light::directional_light::DirectionalLight": (
+          color: LinearRgba(LinearRgba(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)),
+          illuminance: 10000.0,
+          shadow_maps_enabled: true,
+          contact_shadows_enabled: false,
+          affects_lightmapped_mesh_diffuse: true,
+          shadow_depth_bias: 0.02,
+          shadow_normal_bias: 1.8,
+        ),
+      },
+    ),
+    8: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (100.0, 3.0, 50.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (1.0, 1.0, 1.0),
+        ),
+        "Character": (),
+        "CharacterAnimationState": Idle,
+        "RigidBody": Dynamic,
+        "LockedAxes": (7),
+        "ColliderConstructor": Capsule(
+          radius: 0.4,
+          height: 1.0,
+        ),
+      },
+    ),
+    9: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (100.0, 5.0, 56.0),
+          rotation: (-0.16018224300696723, 0.0, 0.0, 0.9870874576374967),
+          scale: (1.0, 1.0, 1.0),
+        ),
+        "Camera3d": (
+          depth_load_op: Clear(0.0),
+          depth_texture_usages: (16),
+        ),
+        "ThirdPersonCamera": (
+          yaw: 0.0,
+          pitch: -0.3,
+          distance: 6.0,
+        ),
+      },
+    ),
+    10: (
+      components: {
+        "bevy_transform::components::transform::Transform": (
+          translation: (100.0, 2.1, 50.0),
+          rotation: (0.0, 0.0, 0.0, 1.0),
+          scale: (1.1180124223602483, 1.1180124223602483, 1.1180124223602483),
+        ),
+        "CharacterVisual": (),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("models/characters/basic_character/character.glb#Scene0")),
+      },
+    ),
+  },
+)

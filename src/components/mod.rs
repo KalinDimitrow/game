@@ -28,17 +28,20 @@ pub enum CharacterMovement {
 }
 
 /// Marks the player-controlled capsule so camera/movement systems can find it.
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
 pub struct Character;
 
 /// Marks the child entity holding the character's glTF scene, so movement
 /// systems can rotate it to face the direction of travel without touching
 /// `Character`'s own transform, whose rotation is locked for physics.
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
 pub struct CharacterVisual;
 
 /// Orbit state for the camera following `Character`, driven by `CameraMovement::Pan`.
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component, Default)]
 pub struct ThirdPersonCamera {
     pub yaw: f32,
     pub pitch: f32,
@@ -59,7 +62,8 @@ impl Default for ThirdPersonCamera {
 /// `move_character`, read by `apply_character_animation` - kept as its own
 /// component (rather than re-deriving it from velocity every frame in the
 /// animation system) so the animation only restarts on an actual state change.
-#[derive(Component, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Default, Reflect)]
+#[reflect(Component, Default, PartialEq)]
 pub enum CharacterAnimationState {
     #[default]
     Idle,

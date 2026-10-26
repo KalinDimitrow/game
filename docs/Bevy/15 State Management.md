@@ -14,6 +14,10 @@ Once there's a menu, a gameplay screen, and a pause overlay, you need a formal w
 - `state/custom_transitions.rs` — hook custom logic into state-transition schedules
 - `ecs/state_scoped.rs` — auto-despawn entities when entering/exiting a state (lives in `ecs/` but is squarely a state-management tool)
 
+## Used in `game`
+
+Not yet - currently planned, not implemented (see `docs/Game/01 Cleanup Backlog.md`, 2026-10-26 entry). `character_controller`'s asset-loading systems (`spawn_character_visual_when_ready`, `attach_character_animation_graph`) currently run every `Update` frame and early-return until their async dependencies (glTF handles, an `AnimationPlayer`) are ready — functionally fine, but the idiomatic fix is `state/states.rs`'s pattern: a `GameState::Loading` → `GameState::Playing` transition, where one cheap system does the readiness *check* each frame (`run_if(in_state(Loading))`) and the actual one-time setup moves to `OnEnter(Playing)` instead of living inside an early-return. Also the natural hook point for an actual loading screen (`ecs/state_scoped.rs` for despawning it on exit).
+
 ## Where this fits
 
 - ⬅ Comes from: [[14 Gizmos and Debug Drawing]]

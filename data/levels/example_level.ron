@@ -1,0 +1,37 @@
+// Reference level: exercises every field the level format supports, in one
+// place. Used three ways - don't let them drift apart:
+//   1. Documentation: explained field-by-field in `docs/Game/Level Format.md`.
+//   2. Validator development: `utils::level_map` embeds this file
+//      (`include_str!`) and parses/validates it in tests as the format
+//      grows new fields.
+//   3. A real, loadable level - `LEVEL_PATH` can point here for manual
+//      testing of overrides/POIs that `level_01.ron` doesn't use yet.
+(
+    name: "example_level",
+
+    grid: (
+        width: 5,
+        depth: 4,
+        cell_size: 1.0,
+    ),
+
+    terrain: (
+        tiles: [
+            (id: "ground", path: "models/terrain/ground_tile.glb"),
+            (id: "water", path: "models/terrain/water_tile.glb"),
+        ],
+        default_tile: "ground",
+        // Exercises a non-default tile, a non-zero height, and a
+        // non-walkable cell - the three things an override can vary.
+        overrides: [
+            (x: 2, z: 1, tile: "water", height: -0.5, walkable: false),
+        ],
+    ),
+
+    // One of each `PointOfInterestKind` variant.
+    points_of_interest: [
+        (kind: PlayerSpawn, position: (0, 0)),
+        (kind: EnemySpawn("north_gate"), position: (4, 0)),
+        (kind: Objective("core"), position: (0, 3)),
+    ],
+)
