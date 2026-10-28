@@ -72,3 +72,37 @@ pub enum CharacterAnimationState {
     // backlog) - this reuses the running animation as a stand-in.
     Jumping,
 }
+
+/// Three stages, not two - `Loading` and `Initialize` split apart because
+/// they wait on different *kinds* of fact:
+/// - `Loading`: waiting on assets to finish their background load, tracked
+///   with an [`AssetBarrier`](crate::resources::AssetBarrier) (see its doc
+///   comment, and `docs/Bevy/06 Assets and Scenes.md`).
+///   Tried collapsing this into a blocking `AssetServer::wait_for_asset` call
+///   in `Startup` instead (no async phase to represent at all) - it
+///   deadlocks every time: the system that actually finalizes a load into
+///   `Assets<T>` and flips its load state (`handle_internal_asset_events`)
+///   runs in `PreUpdate`, which can't start until `Startup` returns. Blocking
+///   inside `Startup` waits on something that can only ever happen *after*
+///   `Startup` finishes - confirmed hung for 45+ seconds before reverting.
+///   `multi_asset_sync.rs`'s async variant avoids this by spawning the wait
+///   on `AsyncComputeTaskPool` - a genuinely separate thread, not the one
+///   running the schedule - so this stays an `Update`-polled state instead.
+/// - `Initialize`: assets are confirmed loaded, so one-time setup that needs
+///   them (building an `AnimationGraph`) can run in `OnEnter` with no
+///   readiness guard at all - entering the state *is* the guarantee. Also
+///   where setup still waits on entity-level facts (an entity spawning,
+///   which has no equivalent "finished" event - only a repeated query) that
+///   a state transition can't front-load a guarantee for.
+/// - `Playing`: gameplay.
+///
+/// `CharacterControllerPlugin` drives Loading -> Initialize -> Playing today;
+/// any future plugin with its own loading-time dependency can reuse these
+/// same three stages instead of growing its own ad-hoc readiness check.
+#[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+pub enum GameState {
+    #[default]
+    Loading,
+    Initialize,
+    Playing,
+}

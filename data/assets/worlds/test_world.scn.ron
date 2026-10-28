@@ -33,11 +33,13 @@
 //   after 15+ seconds. `sync_character_visual_transform` in
 //   `character_controller/mod.rs` now does that sync manually every frame
 //   instead of relying on hierarchy propagation.
-// - Still static/un-animated. The real `spawn_character_visual_when_ready`
+// - Animated as of 2026-10-26: `character_controller::build_character_animation_graph`
 //   loads 3 more glTF files (idle/walking/jumping) and builds an
-//   `AnimationGraph` from clips spread across all of them at runtime; that
-//   combination step has no RON equivalent, so this mesh just renders in its
-//   default bind pose.
+//   `AnimationGraph` from clips spread across all of them at runtime - that
+//   combination step has no RON equivalent, so it stays Rust, attached to
+//   this mesh's `AnimationPlayer` once it appears (`attach_character_animation_graph`).
+//   A `GameState::Loading`/`Playing` split (`components::GameState`) gates
+//   gameplay until that - and everything else below - is actually ready.
 (
   resources: {},
   entities: {
@@ -191,6 +193,14 @@
       },
     ),
     10: (
+      // Scale is 1.8/1.61: character.glb is from the Blender FBX pipeline
+      // (convert_fbx_to_glb.sh), which bakes the source .fbx's unit scale
+      // directly into vertex data on import - mesh-local bounding box is
+      // already ~1.61 units tall (meters), unlike the old assimp pipeline's
+      // raw/un-unit-converted ~161 units. Scaled up to match the capsule
+      // collider's 1.8 (length 1.0 + 2 * radius 0.4). Used to live as a
+      // `CHARACTER_SCALE` Rust const; moved here once the only Rust code
+      // that read it (a dead fallback spawn path) was deleted.
       components: {
         "bevy_transform::components::transform::Transform": (
           translation: (100.0, 2.1, 50.0),

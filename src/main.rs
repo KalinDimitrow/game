@@ -29,6 +29,7 @@ fn main() -> Result<(), BevyError> {
                     ..default()
                 }),
         )
+        .init_state::<GameState>()
         .add_plugins(CorePlugin)
         .add_plugins(TerrainPlugin)
         .add_plugins(CharacterControllerPlugin)

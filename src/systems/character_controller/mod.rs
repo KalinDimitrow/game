@@ -10,14 +10,6 @@ const PITCH_LIMIT: f32 = 1.4;
 // fast enough to feel responsive without snapping instantly on direction changes.
 const VISUAL_TURN_SPEED: f32 = 10.0;
 
-// character.glb here is from the Blender FBX pipeline
-// (convert_fbx_to_glb.sh), which bakes the source .fbx's unit scale
-// directly into vertex data on import - mesh-local bounding box is
-// already ~1.61 units tall (meters), unlike the old assimp pipeline's
-// raw/un-unit-converted ~161 units. Scaled to match the capsule
-// collider's 1.8 (length 1.0 + 2 * radius 0.4).
-const CHARACTER_SCALE: f32 = 1.8 / 1.61;
-
 pub struct CharacterControllerPlugin;
 
 impl Plugin for CharacterControllerPlugin {
@@ -26,6 +18,17 @@ impl Plugin for CharacterControllerPlugin {
         app.add_systems(Startup, load_character_gltf_handles);
         app.add_observer(attach_character_movement_input);
         app.add_observer(attach_camera_movement_input);
+        app.add_systems(
+            Update,
+            check_character_assets_loaded.run_if(in_state(GameState::Loading)),
+        );
+        app.add_systems(OnEnter(GameState::Initialize), build_character_animation_graph);
+        app.add_systems(
+            Update,
+            (attach_character_animation_graph, check_character_ready)
+                .chain()
+                .run_if(in_state(GameState::Initialize)),
+        );
         app.add_systems(
             Update,
             (
@@ -37,10 +40,8 @@ impl Plugin for CharacterControllerPlugin {
                 )
                     .chain(),
                 follow_character,
-                spawn_character_visual_when_ready
-                    .run_if(|animations: Option<Res<CharacterAnimations>>| animations.is_none()),
-                attach_character_animation_graph,
-            ),
+            )
+                .run_if(in_state(GameState::Playing)),
         );
     }
 }
@@ -93,43 +94,65 @@ fn sync_character_visual_transform(
     visual.translation = character.translation + CHARACTER_VISUAL_OFFSET;
 }
 
-// Loads the mesh + 3 animation-only glTF files - `spawn_character_visual_when_ready`
-// below needs these regardless of whether `Character`/`CharacterVisual` came
-// from `test_world.scn.ron`, so this loads unconditionally at `Startup`.
+// Loads the mesh + 3 animation-only glTF files, each tagged with a clone of
+// the same `AssetBarrierGuard` so `check_character_assets_loaded` can wait on
+// all 4 with a single atomic read - see `AssetBarrier`'s doc comment for why
+// that beats accumulating `AssetEvent`s (chiefly: it also releases on a
+// *failed* load, which the event-based version never did).
+//
+// `mesh` isn't read by anything in this file anymore (`test_world.scn.ron`'s
+// own `CharacterVisual` loads it independently via its own `WorldAssetRoot`,
+// and `AssetServer` dedupes by path so this isn't a second read) - it's
+// still here so "character assets are loaded" means all of them, not just
+// the animation clips.
 fn load_character_gltf_handles(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let (barrier, guard) = AssetBarrier::new();
+
+    let load = |path: &'static str| {
+        asset_server
+            .load_builder()
+            .with_guard(guard.clone())
+            .load::<Gltf>(path)
+    };
     commands.insert_resource(CharacterGltfHandles {
-        mesh: asset_server.load(CHARACTER_MESH_PATH),
-        idle: asset_server.load(CHARACTER_IDLE_PATH),
-        walking: asset_server.load(CHARACTER_WALKING_PATH),
-        jumping: asset_server.load(CHARACTER_JUMPING_PATH),
+        mesh: load(CHARACTER_MESH_PATH),
+        idle: load(CHARACTER_IDLE_PATH),
+        walking: load(CHARACTER_WALKING_PATH),
+        jumping: load(CHARACTER_JUMPING_PATH),
     });
+
+    commands.insert_resource(barrier);
+    // `guard` (the original, holding the initial count of 1) drops here, now
+    // that every load has registered its own clone - that's what arms the
+    // barrier.
 }
 
-// TODO(second refactoring wave): this and `attach_character_animation_graph`
-// both run every `Update` frame and early-return until their async
-// dependencies are ready - works, but the planned fix is a `GameState::Loading`
-// state so both become `run_if(in_state(Loading))` with no internal
-// early-return needed. See `docs/Game/01 Cleanup Backlog.md` (2026-10-26) and
-// `docs/Bevy/15 State Management.md`.
-fn spawn_character_visual_when_ready(
+// Builds the `AnimationGraph` from the 3 animation-only glTF files. Runs in
+// `OnEnter(Initialize)`, not `Update` - no readiness guard needed here at
+// all, since entering `Initialize` already guarantees (via
+// `check_character_assets_loaded`) that every `CharacterGltfHandles` handle
+// has finished loading. Runs exactly once, ever.
+//
+// (Tried collapsing this and `check_character_assets_loaded` into one
+// blocking `Startup` system instead, via `AssetServer::wait_for_asset` +
+// `bevy::tasks::block_on` - see `GameState`'s doc comment for why that
+// deadlocks every time and was reverted.)
+//
+// Used to also spawn `CharacterVisual` itself (as a fallback for when
+// nothing else had), back when `spawn_character` could produce a `Character`
+// with no visual of its own - that fallback parented the mesh under
+// `Character` via `with_children`, which would have silently hit the exact
+// `GlobalTransform`-under-a-`RigidBody` bug `sync_character_visual_transform`
+// exists to work around (see its doc comment). `spawn_character` is deleted
+// and `test_world.scn.ron` always provides its own standalone `CharacterVisual`
+// now, so that branch was both dead and a landmine - removed rather than kept
+// "just in case."
+fn build_character_animation_graph(
     mut commands: Commands,
     gltf_handles: Res<CharacterGltfHandles>,
-    asset_server: Res<AssetServer>,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
-    character: Single<Entity, With<Character>>,
-    existing_visual: Query<(), With<CharacterVisual>>,
 ) {
-    let handles = [
-        &gltf_handles.mesh,
-        &gltf_handles.idle,
-        &gltf_handles.walking,
-        &gltf_handles.jumping,
-    ];
-    if !handles.iter().all(|handle| asset_server.is_loaded_with_dependencies(*handle)) {
-        return;
-    }
-
     let idle_gltf = gltfs
         .get(&gltf_handles.idle)
         .expect("idle glTF should be loaded by now");
@@ -166,7 +189,8 @@ fn spawn_character_visual_when_ready(
     // Jumping). Bevy matches each clip's curves to scene entities by bone
     // name (AnimationTargetId), not by which file the clip came from, so
     // clips loaded from entirely separate glTF files apply correctly to the
-    // mesh's skeleton once spawned below.
+    // mesh's skeleton once `attach_character_animation_graph` below attaches
+    // this to it.
     let (graph, node_indices) = AnimationGraph::from_clips([idle_clip, walking_clip, jumping_clip]);
     let graph_handle = graphs.add(graph);
 
@@ -174,29 +198,6 @@ fn spawn_character_visual_when_ready(
         indices: node_indices,
         graph_handle,
     });
-
-    // `test_world.scn.ron` provides its own `CharacterVisual` (as a standalone
-    // entity, not a child - see `sync_character_visual_transform`), already
-    // pointed at the same mesh glTF via its own `WorldAssetRoot`. Only spawn
-    // one here if nothing already did - `attach_character_animation_graph`
-    // below picks up either version's `AnimationPlayer` once it appears.
-    if existing_visual.is_empty() {
-        let mesh_gltf = gltfs
-            .get(&gltf_handles.mesh)
-            .expect("character mesh glTF should be loaded by now");
-        commands.entity(*character).with_children(|parent| {
-            parent.spawn((
-                CharacterVisual,
-                WorldAssetRoot(
-                    mesh_gltf
-                        .default_scene
-                        .clone()
-                        .expect("character mesh glTF should have a default scene"),
-                ),
-                Transform::from_xyz(0.0, -0.9, 0.0).with_scale(Vec3::splat(CHARACTER_SCALE)),
-            ));
-        });
-    }
 }
 
 // Picks up the character's `AnimationPlayer` once its glTF scene has
@@ -226,6 +227,37 @@ fn attach_character_animation_graph(
             .entity(entity)
             .insert(AnimationGraphHandle(animations.graph_handle.clone()))
             .insert(transitions);
+    }
+}
+
+// Transitions `Loading` -> `Initialize` once every glTF load tagged in
+// `load_character_gltf_handles` has finished (or failed - see `AssetBarrier`).
+// One atomic read per frame, and it stops running entirely once `Initialize`
+// starts.
+fn check_character_assets_loaded(
+    barrier: Res<AssetBarrier>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if barrier.is_ready() {
+        next_state.set(GameState::Initialize);
+    }
+}
+
+// Transitions `Initialize` -> `Playing` once the remaining, entity-level
+// facts are true: `Character` exists, and the visual's `AnimationPlayer` +
+// `AnimationGraphHandle` are both attached (by `attach_character_animation_graph`
+// just above, chained to run first so this can see the result the same
+// frame). Unlike asset loading, there's no event for "an entity now has
+// component X" - this has to stay a plain query, checked every frame, until
+// it's observed; splitting `Loading`/`Initialize` apart couldn't remove this
+// one; only the asset-readiness check above got to drop its guard.
+fn check_character_ready(
+    character: Query<(), With<Character>>,
+    visual_ready: Query<(), (With<AnimationPlayer>, With<AnimationGraphHandle>)>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if !character.is_empty() && !visual_ready.is_empty() {
+        next_state.set(GameState::Playing);
     }
 }
 
