@@ -127,7 +127,29 @@
       "Bash(mkdir -p /home/kalin/Projects/game/src/utils/system_config)",
       "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo build --quiet)",
       "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo test --quiet)",
-      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo build)"
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo build)",
+      "Bash(find / -maxdepth 6 -type d -name \"bevy_world_serialization*\")",
+      "Bash(grep -n -A3 'name = \"bevy\"$' Cargo.lock)",
+      "Bash(git -C /home/kalin/Projects/bevy log --oneline -5)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo check --message-format short)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo test --message-format short)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan timeout 60 cargo build)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan timeout 25 /home/claude/.cargo-target-cache/game/debug/game)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan LD_LIBRARY_PATH=/home/claude/.cargo-target-cache/game/debug/deps timeout 25 /home/claude/.cargo-target-cache/game/debug/game)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan timeout 30 cargo run)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan timeout 40 cargo run --bin game)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(grep -Ei \"THROWAWAY|ERROR|panic|failed to load|Encountered an error\" /tmp/run_fail.log | head -20)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo clippy --all-targets --message-format short)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo test)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game DISPLAY=:99 WGPU_BACKEND=vulkan timeout 30 cargo run --bin game)",
+      "Bash(echo \"exit=$? \\(124=timeout, as expected for a game loop\\)\")",
+      "Bash(ldd /home/kalin/Projects/game/target/debug/game)",
+      "Bash(cat /home/kalin/Projects/game/target/debug/deps/bevy_dylib-f72bc493f5a6220e.d; echo \"=== config ===\"; cat /home/kalin/Projects/game/.cargo/config.toml 2>/dev/null; cat ~/.cargo/config.toml 2>/dev/null)",
+      "Bash(readelf -d target/debug/game)",
+      "Bash(readelf -d target/debug/deps/libbevy_dylib-6de9b8951717dca5.so)",
+      "Bash(timeout 580 cargo build --bin game)",
+      "Bash(ldd target/debug/game)"
     ]
   }
 }
