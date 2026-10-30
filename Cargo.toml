@@ -28,6 +28,10 @@ required-features = ["headless_screenshot"]
 [profile.dev]
 opt-level = 1
 codegen-backend = "cranelift"
+# `dynamic_linking` makes bevy and libstd shared objects. Without an embedded
+# rpath only `cargo run` can find them (it sets LD_LIBRARY_PATH itself), so
+# `./target/debug/game` fails to start. Costs a relink, nothing more.
+rpath = true
 
 # Enable a large amount of optimization in the dev profile for dependencies.
 [profile.dev.package."*"]
