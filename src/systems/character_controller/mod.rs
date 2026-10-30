@@ -1,4 +1,6 @@
 use avian3d::prelude::LinearVelocity;
+use bevy::world_serialization::WorldInstanceReady;
+use std::collections::HashMap;
 
 use crate::prelude::*;
 
@@ -18,16 +20,14 @@ impl Plugin for CharacterControllerPlugin {
         app.add_systems(Startup, load_character_gltf_handles);
         app.add_observer(attach_character_movement_input);
         app.add_observer(attach_camera_movement_input);
-        app.add_systems(
-            Update,
-            check_character_assets_loaded.run_if(in_state(GameState::Loading)),
-        );
+        app.add_observer(mark_character_scene_spawned);
+        // No `Loading` system of its own anymore: `load_character_gltf_handles`
+        // registers its handles with `PendingAssets` and `CorePlugin`'s
+        // `check_pending_assets` drives the transition for every plugin at once.
         app.add_systems(OnEnter(GameState::Initialize), build_character_animation_graph);
         app.add_systems(
             Update,
-            (attach_character_animation_graph, check_character_ready)
-                .chain()
-                .run_if(in_state(GameState::Initialize)),
+            finish_character_initialization.run_if(in_state(GameState::Initialize)),
         );
         app.add_systems(
             Update,
@@ -94,171 +94,181 @@ fn sync_character_visual_transform(
     visual.translation = character.translation + CHARACTER_VISUAL_OFFSET;
 }
 
-// Loads the mesh + 3 animation-only glTF files, each tagged with a clone of
-// the same `AssetBarrierGuard` so `check_character_assets_loaded` can wait on
-// all 4 with a single atomic read - see `AssetBarrier`'s doc comment for why
-// that beats accumulating `AssetEvent`s (chiefly: it also releases on a
-// *failed* load, which the event-based version never did).
+// Loads one animation-only glTF per `CHARACTER_ANIMATIONS` entry, registering
+// each with `PendingAssets` so `CorePlugin`'s `check_pending_assets` waits on
+// them.
 //
-// `mesh` isn't read by anything in this file anymore (`test_world.scn.ron`'s
-// own `CharacterVisual` loads it independently via its own `WorldAssetRoot`,
-// and `AssetServer` dedupes by path so this isn't a second read) - it's
-// still here so "character assets are loaded" means all of them, not just
-// the animation clips.
-fn load_character_gltf_handles(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let (barrier, guard) = AssetBarrier::new();
+// Driven off the table rather than four named consts and four named fields, so
+// the set of clips is described in exactly one place (`CHARACTER_ANIMATIONS`)
+// instead of being restated here, in `CharacterGltfHandles`, in the
+// `AnimationGraph`'s argument order, and in a `match` downstream.
+//
+// The mesh/skeleton isn't loaded here. `test_world.scn.ron`'s `CharacterVisual`
+// references it via its own `WorldAssetRoot`, so it's a dependency of the world
+// handle `terrain::spawn_test_world` tracks - covered by the gate without being
+// named twice. The old `mesh` field was read by nothing and tracked
+// `character.glb` where the scene actually spawns `character.glb#Scene0`.
+fn load_character_gltf_handles(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut pending: ResMut<PendingAssets>,
+) {
+    let animations: HashMap<_, _> = CHARACTER_ANIMATIONS
+        .iter()
+        .map(|&(state, path)| {
+            let handle: Handle<Gltf> = asset_server.load(path);
+            pending.track(handle.clone());
+            (state, handle)
+        })
+        .collect();
 
-    let load = |path: &'static str| {
-        asset_server
-            .load_builder()
-            .with_guard(guard.clone())
-            .load::<Gltf>(path)
-    };
-    commands.insert_resource(CharacterGltfHandles {
-        mesh: load(CHARACTER_MESH_PATH),
-        idle: load(CHARACTER_IDLE_PATH),
-        walking: load(CHARACTER_WALKING_PATH),
-        jumping: load(CHARACTER_JUMPING_PATH),
-    });
-
-    commands.insert_resource(barrier);
-    // `guard` (the original, holding the initial count of 1) drops here, now
-    // that every load has registered its own clone - that's what arms the
-    // barrier.
+    commands.insert_resource(CharacterGltfHandles { animations });
 }
 
-// Builds the `AnimationGraph` from the 3 animation-only glTF files. Runs in
-// `OnEnter(Initialize)`, not `Update` - no readiness guard needed here at
-// all, since entering `Initialize` already guarantees (via
-// `check_character_assets_loaded`) that every `CharacterGltfHandles` handle
-// has finished loading. Runs exactly once, ever.
+// Builds the `AnimationGraph` from the animation-only glTF files. Runs in
+// `OnEnter(Initialize)`, not `Update`: entering `Initialize` already means
+// every tracked load finished *successfully* (`check_pending_assets` returns
+// `Err` on a failure instead of advancing), so there's no readiness guard
+// here. Runs exactly once, ever.
 //
-// (Tried collapsing this and `check_character_assets_loaded` into one
-// blocking `Startup` system instead, via `AssetServer::wait_for_asset` +
-// `bevy::tasks::block_on` - see `GameState`'s doc comment for why that
-// deadlocks every time and was reverted.)
+// (Tried collapsing this and the readiness check into one blocking `Startup`
+// system instead, via `AssetServer::wait_for_asset` + `bevy::tasks::block_on`
+// - see `GameState`'s doc comment for why that deadlocks every time and was
+// reverted.)
 //
-// Used to also spawn `CharacterVisual` itself (as a fallback for when
-// nothing else had), back when `spawn_character` could produce a `Character`
-// with no visual of its own - that fallback parented the mesh under
-// `Character` via `with_children`, which would have silently hit the exact
-// `GlobalTransform`-under-a-`RigidBody` bug `sync_character_visual_transform`
-// exists to work around (see its doc comment). `spawn_character` is deleted
-// and `test_world.scn.ron` always provides its own standalone `CharacterVisual`
-// now, so that branch was both dead and a landmine - removed rather than kept
-// "just in case."
+// Still fallible rather than `.expect()`-ing, even with that guarantee: the
+// expects it replaced asserted exactly this invariant back when it *wasn't*
+// true (the `AssetBarrier` released on failed loads too, so a missing
+// `Idle.glb` reached this function and panicked). Returning `Err` means a
+// regression in the gate shows up as an error with a state name in it, not a
+// panic in an unrelated-looking function.
+//
+// Built node-by-node rather than with `AnimationGraph::from_clips`, because
+// `from_clips` returns a `Vec` whose order is the caller's problem to keep
+// aligned with `CharacterAnimationState`. `add_clip` returns one index at a
+// time, so each can be stored under the state that plays it - which also
+// means the iteration order of `animations` is irrelevant here.
 fn build_character_animation_graph(
     mut commands: Commands,
     gltf_handles: Res<CharacterGltfHandles>,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
-) {
-    let idle_gltf = gltfs
-        .get(&gltf_handles.idle)
-        .expect("idle glTF should be loaded by now");
-    let walking_gltf = gltfs
-        .get(&gltf_handles.walking)
-        .expect("walking glTF should be loaded by now");
-    let jumping_gltf = gltfs
-        .get(&gltf_handles.jumping)
-        .expect("jumping glTF should be loaded by now");
+) -> Result<(), BevyError> {
+    let mut graph = AnimationGraph::new();
+    let root = graph.root;
+    let mut nodes = HashMap::new();
 
-    // Each animation-only file has exactly one clip, named after its own
-    // source file by the conversion script - take whichever one it is
-    // rather than hardcoding an exact internal name.
-    let idle_clip = idle_gltf
-        .named_animations
-        .values()
-        .next()
-        .expect("idle glTF should have an animation clip")
-        .clone();
-    let walking_clip = walking_gltf
-        .named_animations
-        .values()
-        .next()
-        .expect("walking glTF should have an animation clip")
-        .clone();
-    let jumping_clip = jumping_gltf
-        .named_animations
-        .values()
-        .next()
-        .expect("jumping glTF should have an animation clip")
-        .clone();
+    for (&state, handle) in &gltf_handles.animations {
+        let gltf = gltfs.get(handle).ok_or_else(|| {
+            format!("character glTF for {state:?} is not in `Assets<Gltf>` on entering Initialize")
+        })?;
 
-    // Order matches `CharacterAnimationState`'s variant order (Idle, Walking,
-    // Jumping). Bevy matches each clip's curves to scene entities by bone
-    // name (AnimationTargetId), not by which file the clip came from, so
-    // clips loaded from entirely separate glTF files apply correctly to the
-    // mesh's skeleton once `attach_character_animation_graph` below attaches
-    // this to it.
-    let (graph, node_indices) = AnimationGraph::from_clips([idle_clip, walking_clip, jumping_clip]);
+        // Each animation-only file has exactly one clip, named after its own
+        // source file by the conversion script - take whichever one it is
+        // rather than hardcoding an exact internal name.
+        let clip = gltf
+            .named_animations
+            .values()
+            .next()
+            .ok_or_else(|| format!("character glTF for {state:?} has no animation clip"))?
+            .clone();
+
+        // Bevy matches a clip's curves to scene entities by bone name
+        // (`AnimationTargetId`), not by which file the clip came from, so
+        // clips from entirely separate glTF files all apply correctly to the
+        // mesh's skeleton once `finish_character_initialization` attaches
+        // this graph to its `AnimationPlayer`.
+        nodes.insert(state, graph.add_clip(clip, 1.0, root));
+    }
+
     let graph_handle = graphs.add(graph);
+    commands.insert_resource(CharacterAnimations { nodes, graph_handle });
 
-    commands.insert_resource(CharacterAnimations {
-        indices: node_indices,
-        graph_handle,
-    });
+    Ok(())
 }
 
-// Picks up the character's `AnimationPlayer` once its glTF scene has
-// actually finished spawning (async, so can't happen in the system above) -
-// queries for "has a player but no graph yet" instead of `Added<AnimationPlayer>`,
-// because `Added` is only true for the one frame the component appeared, and
-// that frame isn't guaranteed to be the same frame `CharacterAnimations`
-// finishes building (it depends on 3 separate async glTF loads) - confirmed
-// via a throwaway diagnostic that the player existed in the world the whole
-// time, just never on the same frame as `Added` and a ready `CharacterAnimations`
-// at once. No `Added<AnimationGraphHandle>`-style window to miss this way.
-fn attach_character_animation_graph(
+// `WorldInstanceReady` fires on the entity owning the `WorldAssetRoot`, so for
+// the character that's the `CharacterVisual` itself (entity 10 in
+// `test_world.scn.ron`) once its nested glTF scene instance - and therefore
+// the `AnimationPlayer` inside it - exists.
+//
+// This is the "there's no event for an entity existing" gap in `GameState`'s
+// old doc comment, closed: `check_character_ready` used to poll for a
+// `Character`, which was really standing in for "the world spawned" (a
+// `Character` only ever comes from the scene). That worked, but made an entity
+// query the de-facto readiness signal for an asset load. `bevy_world_serialization`
+// publishes the actual completion event; this just narrows it to the instance
+// we care about, since every `WorldAssetRoot` in the scene fires one.
+fn mark_character_scene_spawned(
+    trigger: On<WorldInstanceReady>,
+    visuals: Query<(), With<CharacterVisual>>,
+    mut commands: Commands,
+) {
+    if visuals.contains(trigger.entity) {
+        commands.entity(trigger.entity).insert(CharacterSceneSpawned);
+    }
+}
+
+// Attaches the animation graph to the character's `AnimationPlayer` and hands
+// off to `Playing` - one system where there used to be two chained ones
+// (`attach_character_animation_graph` + `check_character_ready`), since the
+// transition is just "the attach succeeded" and splitting them meant the
+// second had to re-derive what the first already knew.
+//
+// Deliberately order-independent rather than relying on `CharacterSceneSpawned`
+// and `CharacterAnimations` arriving in a particular order: the graph is built
+// in `OnEnter(Initialize)` (i.e. `StateTransition`) while the scene instance
+// spawns in `SpawnScene`, two different schedules, and the margin between them
+// is not something worth depending on. Returning early and retrying next frame
+// costs a couple of frames during `Initialize` and nothing after.
+//
+// Same reason it queries "has a player but no graph yet" instead of
+// `Added<AnimationPlayer>`: `Added` is only true for the one frame the
+// component appeared, which isn't guaranteed to be a frame where the graph
+// also exists - confirmed previously via a throwaway diagnostic that the
+// player existed in the world the whole time, just never on the same frame as
+// `Added` and a ready `CharacterAnimations` at once.
+fn finish_character_initialization(
     mut commands: Commands,
     animations: Option<Res<CharacterAnimations>>,
+    spawned: Query<(), With<CharacterSceneSpawned>>,
     mut players: Query<(Entity, &mut AnimationPlayer), Without<AnimationGraphHandle>>,
-) {
+    mut next_state: ResMut<NextState<GameState>>,
+) -> Result<(), BevyError> {
     let Some(animations) = animations else {
-        return;
+        return Ok(());
     };
+    if spawned.is_empty() {
+        return Ok(());
+    }
+
+    let idle = *animations
+        .nodes
+        .get(&CharacterAnimationState::default())
+        .ok_or("no animation node for the default `CharacterAnimationState`")?;
+
+    let mut attached = false;
     for (entity, mut player) in &mut players {
         let mut transitions = AnimationTransitions::new();
         transitions
-            .play(&mut player, animations.indices[0], std::time::Duration::ZERO)
+            .play(&mut player, idle, std::time::Duration::ZERO)
             .repeat();
 
         commands
             .entity(entity)
             .insert(AnimationGraphHandle(animations.graph_handle.clone()))
             .insert(transitions);
+        attached = true;
     }
-}
 
-// Transitions `Loading` -> `Initialize` once every glTF load tagged in
-// `load_character_gltf_handles` has finished (or failed - see `AssetBarrier`).
-// One atomic read per frame, and it stops running entirely once `Initialize`
-// starts.
-fn check_character_assets_loaded(
-    barrier: Res<AssetBarrier>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    if barrier.is_ready() {
-        next_state.set(GameState::Initialize);
-    }
-}
-
-// Transitions `Initialize` -> `Playing` once the remaining, entity-level
-// facts are true: `Character` exists, and the visual's `AnimationPlayer` +
-// `AnimationGraphHandle` are both attached (by `attach_character_animation_graph`
-// just above, chained to run first so this can see the result the same
-// frame). Unlike asset loading, there's no event for "an entity now has
-// component X" - this has to stay a plain query, checked every frame, until
-// it's observed; splitting `Loading`/`Initialize` apart couldn't remove this
-// one; only the asset-readiness check above got to drop its guard.
-fn check_character_ready(
-    character: Query<(), With<Character>>,
-    visual_ready: Query<(), (With<AnimationPlayer>, With<AnimationGraphHandle>)>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    if !character.is_empty() && !visual_ready.is_empty() {
+    // Only advance once a player was actually set up. `CharacterSceneSpawned`
+    // says the instance spawned, which is one sync point ahead of this query
+    // seeing its entities.
+    if attached {
         next_state.set(GameState::Playing);
     }
+
+    Ok(())
 }
 
 fn move_character(
@@ -339,10 +349,11 @@ fn apply_character_animation(
         return;
     };
 
-    let index = match state {
-        CharacterAnimationState::Idle => animations.indices[0],
-        CharacterAnimationState::Walking => animations.indices[1],
-        CharacterAnimationState::Jumping => animations.indices[2],
+    // One map lookup where this used to be a `match` whose arms had to agree
+    // with `CharacterAnimations.indices`'s ordering by convention alone.
+    let Some(&index) = animations.nodes.get(state) else {
+        warn!("no animation node for {state:?}");
+        return;
     };
     transitions
         .play(&mut player, index, std::time::Duration::from_millis(200))

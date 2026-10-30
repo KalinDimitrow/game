@@ -1,13 +1,23 @@
-//! Unifies what used to be `graphics_config`'s and `systems::core::button_config`'s
-//! separate read/parse/wrap-errors logic: each `*_config_reader` function
-//! reads/parses one file and fills in the one field of `ParsedConfigs` it
-//! owns. All of them share the `ConfigReader` signature, which is what lets
-//! `system_config_reader` walk `CONFIG_READERS` (a `(path, reader)` table)
-//! and just call `reader(path, &mut parsed)` directly - no `match` on a key
-//! needed to pick the right one. A missing file is a hard error - the app
-//! can't run without its config - so by the time `system_config_reader`
-//! turns `ParsedConfigs` into the `SystemConfig` it returns, every field is
-//! known to be populated; callers never see an `Option`.
+//! Reads the config that has to exist *before the `App` does*, which in
+//! practice means whatever window creation needs. Each `*_config_reader`
+//! function reads/parses one file and fills in the one field of
+//! `ParsedConfigs` it owns. All of them share the `ConfigReader` signature,
+//! which is what lets `system_config_reader` walk `CONFIG_READERS` (a
+//! `(path, reader)` table) and just call `reader(path, &mut parsed)` directly,
+//! with no `match` on a key needed to pick the right one. A missing file is
+//! a hard error - the app can't run without its config - so by the time
+//! `system_config_reader` turns `ParsedConfigs` into the `SystemConfig` it
+//! returns, every field is known to be populated; callers never see an
+//! `Option`.
+//!
+//! `button_config` used to be read here too. It isn't anymore: nothing needs
+//! the bindings before the `App` exists, so it's a `ButtonConfig` *asset*
+//! loaded through `AssetServer` (see `button_config::ButtonConfigLoader` and
+//! `systems::core::button_config`), which gets it hot-reload and a path that
+//! doesn't depend on the working directory. That leaves `CONFIG_READERS` with
+//! one entry today; the table stays because the criterion for being in it is
+//! a real one ("needed before the `App` exists"), not because two things
+//! happened to share a shape.
 
 use bevy::ecs::error::BevyError;
 use std::path::Path;
@@ -19,13 +29,11 @@ pub use self::graphics_config::*;
 
 /// Output of `system_config_reader` - purely a transient carrier for the
 /// parsed configs on their way from "just read off disk" to "inserted as
-/// their own resource" in `main`. Not a `Resource` itself: `ButtonConfig`
-/// and `GraphicsConfig` are each inserted separately, so systems depend on
-/// only the one config they actually use. No `Option` here: by the time
-/// this exists, `system_config_reader` has already confirmed both were read
-/// (or returned `Err` instead), so there's nothing left to re-check.
+/// their own resource" in `main`. Not a `Resource` itself, so systems depend
+/// on only the one config they actually use. No `Option` here: by the time
+/// this exists, `system_config_reader` has already confirmed everything was
+/// read (or returned `Err` instead), so there's nothing left to re-check.
 pub struct SystemConfig {
-    pub button: ButtonConfig,
     pub graphics: GraphicsConfig,
 }
 
@@ -37,7 +45,6 @@ pub struct SystemConfig {
 /// public way to build or inspect one other than running the readers.
 #[derive(Default)]
 pub struct ParsedConfigs {
-    button: Option<ButtonConfig>,
     graphics: Option<GraphicsConfig>,
 }
 
@@ -61,7 +68,6 @@ pub fn system_config_reader(config_readers: &[(&str, ConfigReader)]) -> Result<S
     }
 
     Ok(SystemConfig {
-        button: parsed.button.expect("CONFIG_READERS always includes a button reader"),
         graphics: parsed.graphics.expect("CONFIG_READERS always includes a graphics reader"),
     })
 }

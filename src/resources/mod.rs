@@ -1,92 +1,142 @@
+use bevy::asset::{RecursiveDependencyLoadState, UntypedHandle};
 use bevy::prelude::*;
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
-};
+use std::collections::HashMap;
 
-/// Counts asset loads still in flight, as one atomic rather than a set of
-/// handle ids to tick off. Modeled on bevy's own `asset/multi_asset_sync.rs`
-/// example, minus its async half (nothing here needs to `.await` the
-/// barrier, so there's no `event_listener::Event` and no
-/// `AsyncComputeTaskPool` task - just `is_ready()`, polled from a system).
-///
-/// Each load is tagged with an [`AssetBarrierGuard`] via
-/// `AssetServer::load_builder().with_guard(..)`; `bevy_asset` drops that
-/// guard when the load finishes. The reason this is worth having over
-/// accumulating `AssetEvent::LoadedWithDependencies` ids (what this replaced):
-/// the guard is dropped when a load **fails**, too - confirmed in
-/// `bevy_asset`'s `spawn_load_task`, which does `if let Err(err) = ... { error!(..) }`
-/// and then `drop(guard)` unconditionally. `LoadedWithDependencies` only
-/// ever fires on success, so a missing or corrupt file used to leave the
-/// game stuck in `GameState::Loading` forever with nothing but an error log.
-///
-/// # Ordering caveat
-///
-/// `is_ready()` becoming true does **not** by itself mean `Assets<T>::get()`
-/// will return the asset: the guard is dropped on the IO task pool thread as
-/// soon as the load task finishes, while the asset is only inserted into
-/// `Assets<T>` later, by `handle_internal_asset_events` in `PreUpdate`. What
-/// makes the current usage safe is schedule order - the check runs in
-/// `Update` and the code that actually reads the asset runs in
-/// `OnEnter(..)`, i.e. in `StateTransition`, which `bevy_state` installs
-/// immediately *after* `PreUpdate`. So the earliest an `OnEnter` can observe
-/// the transition is the next frame, by which point `PreUpdate` has already
-/// inserted the asset. Reading the asset from a system that runs in the same
-/// `Update` as the check would race.
-#[derive(Resource)]
-pub struct AssetBarrier(Arc<AtomicU32>);
+use crate::components::CharacterAnimationState;
 
-/// Held for the duration of one asset load; decrements [`AssetBarrier`]'s
-/// count on drop, whether that load succeeded or failed.
-pub struct AssetBarrierGuard(Arc<AtomicU32>);
+/// Every asset handle `GameState::Loading` should wait on, pooled across
+/// plugins: each registers its own loads during `Startup`, and
+/// `systems::core::check_pending_assets` folds `AssetServer`'s load state over
+/// the whole list. So "the game finished loading" is one fact about one list,
+/// not a readiness check per plugin - which is what let `TerrainPlugin`'s
+/// world load join the gate (see "what this fixes" below).
+///
+/// # Why not the `AssetBarrier` this replaced
+///
+/// The previous version was a hand-rolled `Arc<AtomicU32>` tagged onto each
+/// load via `AssetServer::load_builder().with_guard(..)`, modeled on bevy's
+/// `asset/multi_asset_sync.rs`, with the guard's `Drop` decrementing the
+/// count. `AssetServer` already tracks all of this, and three things make it
+/// the better source of truth:
+///
+/// - **It tells success apart from failure.** The guard's `Drop` runs either
+///   way (`bevy_asset`'s `spawn_load_task` does `drop(guard)` unconditionally
+///   after logging), so `is_ready()` only ever meant "settled", never
+///   "usable". Every reader downstream had to `.expect()` on an invariant the
+///   barrier didn't actually provide - a missing `Idle.glb` released the
+///   barrier, entered `Initialize`, then panicked in
+///   `build_character_animation_graph`. `RecursiveDependencyLoadState` carries
+///   `Failed(Arc<AssetLoadError>)`, so that becomes an
+///   [`AssetLoadProgress::Failed`] with a path in it.
+/// - **It covers dependencies.** The guard is dropped as soon as *that one*
+///   asset's load task ends; anything the asset referenced is a separate task
+///   with no guard on it. That was invisible for the character glTFs (their
+///   clips are labeled sub-assets inside one file) but made the pattern
+///   useless for `test_world.scn.ron`, whose 7 glTF scenes are loader
+///   dependencies - guarding it would have proven only that the RON parsed.
+///   `recursive_dependency_load_state` is transitive, which is why tracking
+///   the one world handle here now covers every tile and the character mesh.
+/// - **No ordering caveat.** The guard dropped on the IO task pool thread,
+///   ahead of the asset landing in `Assets<T>`, so reading an asset was only
+///   safe by schedule accident (check in `Update`, read in a later
+///   `OnEnter`). Load state flips in `handle_internal_asset_events`
+///   (`PreUpdate`), where `process_asset_load` sets `Loaded` *and* inserts
+///   into `Assets<T>` under one `AssetInfos` write lock - so "loaded" and
+///   "gettable" are now the same instant, and the race the old doc comment
+///   had to warn about doesn't exist.
+///
+/// # What this fixes beyond the barrier
+///
+/// `GameState::Loading` used to wait only on the 4 character glTFs. The world
+/// (`terrain::spawn_test_world`) was loaded unguarded, so the state meant
+/// "the animation clips settled", not "the world is ready" - what covered the
+/// gap was `check_character_ready` polling for a `Character`, which only ever
+/// comes from the scene. That made an entity query load-bearing for asset
+/// readiness by accident, and left the original failure mode intact one state
+/// later: a missing `test_world.scn.ron` released the barrier, entered
+/// `Initialize`, and polled forever for a `Character` that could never spawn.
+#[derive(Resource, Default)]
+pub struct PendingAssets(Vec<UntypedHandle>);
 
-impl AssetBarrier {
-    /// Returns a barrier plus the guard to hand to each load. The count
-    /// starts at 1 - held by the returned guard - so the barrier can't read
-    /// as ready while loads are still being queued up; dropping that
-    /// original guard once every load is registered is what arms it.
-    pub fn new() -> (AssetBarrier, AssetBarrierGuard) {
-        let count = Arc::new(AtomicU32::new(1));
-        (AssetBarrier(count.clone()), AssetBarrierGuard(count))
+/// Outcome of folding `AssetServer`'s load state over every handle in
+/// [`PendingAssets`].
+pub enum AssetLoadProgress {
+    /// At least one load is still in flight and none have failed.
+    Loading,
+    /// Every load finished successfully; the assets are in `Assets<T>` now.
+    Ready,
+    /// One or more loads failed, one `path: error` string each.
+    Failed(Vec<String>),
+}
+
+impl PendingAssets {
+    /// Registers a handle to wait on. Takes the handle by value and keeps it:
+    /// a strong handle here also keeps the asset alive, which matters for the
+    /// world - its only other owner is a component on an entity.
+    pub fn track(&mut self, handle: impl Into<UntypedHandle>) {
+        self.0.push(handle.into());
     }
 
-    /// True once every guard has been dropped - i.e. every tagged load has
-    /// either finished or failed.
-    pub fn is_ready(&self) -> bool {
-        self.0.load(Ordering::Acquire) == 0
+    /// Folds every tracked handle's `RecursiveDependencyLoadState` into one
+    /// answer. Failures win over still-loading, so a broken asset surfaces
+    /// immediately rather than after the slowest sibling finishes.
+    pub fn progress(&self, asset_server: &AssetServer) -> AssetLoadProgress {
+        let mut failures = Vec::new();
+        let mut still_loading = false;
+
+        for handle in &self.0 {
+            match asset_server.recursive_dependency_load_state(handle.id()) {
+                RecursiveDependencyLoadState::Loaded => {}
+                RecursiveDependencyLoadState::NotLoaded
+                | RecursiveDependencyLoadState::Loading => still_loading = true,
+                RecursiveDependencyLoadState::Failed(error) => {
+                    // The id's own path - for a failed *dependency* that's the
+                    // parent that pulled it in, and `error`'s `Display` names
+                    // the dependency itself, so both ends end up in the message.
+                    let path = asset_server
+                        .get_path(handle.id())
+                        .map_or_else(|| "<unknown path>".to_string(), |path| path.to_string());
+                    failures.push(format!("`{path}`: {error}"));
+                }
+            }
+        }
+
+        if !failures.is_empty() {
+            AssetLoadProgress::Failed(failures)
+        } else if still_loading {
+            AssetLoadProgress::Loading
+        } else {
+            AssetLoadProgress::Ready
+        }
     }
 }
 
-impl Clone for AssetBarrierGuard {
-    fn clone(&self) -> Self {
-        self.0.fetch_add(1, Ordering::AcqRel);
-        AssetBarrierGuard(self.0.clone())
-    }
-}
-
-impl Drop for AssetBarrierGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
-    }
-}
-
-/// The mesh/skeleton and each animation are separate glTF assets - Bevy
-/// matches clips to scene entities by bone name, not by source file, so
-/// these just need to be loaded independently and combined once all of them
-/// are ready. Populated by `systems::character_controller::load_character_gltf_handles`.
+/// One glTF per animation clip, keyed by the state that plays it. Populated by
+/// `systems::character_controller::load_character_gltf_handles` from
+/// `CHARACTER_ANIMATIONS`.
+///
+/// The mesh/skeleton isn't here: it arrives as a loader dependency of
+/// `test_world.scn.ron` (entity 10's `WorldAssetRoot`), which [`PendingAssets`]
+/// tracks recursively. The separate `mesh` handle this used to carry existed
+/// only to pad the old barrier, was read by nothing, and tracked the wrong
+/// asset anyway - `character.glb`, the root `Gltf`, where the scene spawns
+/// `character.glb#Scene0`, a distinct `AssetId`.
 #[derive(Resource)]
 pub struct CharacterGltfHandles {
-    pub mesh: Handle<Gltf>,
-    pub idle: Handle<Gltf>,
-    pub walking: Handle<Gltf>,
-    pub jumping: Handle<Gltf>,
+    pub animations: HashMap<CharacterAnimationState, Handle<Gltf>>,
 }
 
-/// Indexed by `CharacterAnimationState` variant order: Idle, Walking, Jumping.
 /// Built by `systems::character_controller::build_character_animation_graph`
-/// once every handle in `CharacterGltfHandles` has finished loading.
+/// once every handle in [`CharacterGltfHandles`] has loaded.
+///
+/// Keyed by the state that plays each clip, rather than a `Vec` indexed by
+/// `CharacterAnimationState`'s variant order. That ordinal agreement was
+/// unchecked and had to be kept in sync by comment across three places at
+/// once: the load order, `AnimationGraph::from_clips`'s argument order, and a
+/// `match` in `apply_character_animation`. A map makes the key the thing the
+/// lookup is actually about.
 #[derive(Resource)]
 pub struct CharacterAnimations {
-    pub indices: Vec<AnimationNodeIndex>,
+    pub nodes: HashMap<CharacterAnimationState, AnimationNodeIndex>,
     pub graph_handle: Handle<AnimationGraph>,
 }

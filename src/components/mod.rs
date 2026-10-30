@@ -39,6 +39,16 @@ pub struct Character;
 #[reflect(Component, Default)]
 pub struct CharacterVisual;
 
+/// Marks a [`CharacterVisual`] whose nested glTF scene instance has finished
+/// spawning, so its `AnimationPlayer` is known to exist. Inserted by
+/// `character_controller::mark_character_scene_spawned`, an observer on
+/// `bevy_world_serialization`'s `WorldInstanceReady`.
+///
+/// Not reflectable/authorable: this is a runtime fact about a load, never
+/// something `test_world.scn.ron` should be able to assert.
+#[derive(Component)]
+pub struct CharacterSceneSpawned;
+
 /// Orbit state for the camera following `Character`, driven by `CameraMovement::Pan`.
 #[derive(Component, Reflect)]
 #[reflect(Component, Default)]
@@ -62,8 +72,13 @@ impl Default for ThirdPersonCamera {
 /// `move_character`, read by `apply_character_animation` - kept as its own
 /// component (rather than re-deriving it from velocity every frame in the
 /// animation system) so the animation only restarts on an actual state change.
-#[derive(Component, Clone, Copy, PartialEq, Eq, Default, Reflect)]
-#[reflect(Component, Default, PartialEq)]
+/// `Hash`/`Eq` because this is also the key type for
+/// [`CharacterGltfHandles::animations`](crate::resources::CharacterGltfHandles)
+/// and [`CharacterAnimations::nodes`](crate::resources::CharacterAnimations) -
+/// keying those by the state that plays a clip is what replaced a `Vec`
+/// indexed by this enum's variant order.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Hash)]
 pub enum CharacterAnimationState {
     #[default]
     Idle,
@@ -75,9 +90,12 @@ pub enum CharacterAnimationState {
 
 /// Three stages, not two - `Loading` and `Initialize` split apart because
 /// they wait on different *kinds* of fact:
-/// - `Loading`: waiting on assets to finish their background load, tracked
-///   with an [`AssetBarrier`](crate::resources::AssetBarrier) (see its doc
-///   comment, and `docs/Bevy/06 Assets and Scenes.md`).
+/// - `Loading`: waiting on assets to finish their background load. Every
+///   plugin registers its own handles into
+///   [`PendingAssets`](crate::resources::PendingAssets) during `Startup`, and
+///   `systems::core::check_pending_assets` drives the transition off
+///   `AssetServer`'s own load state (see `PendingAssets`'s doc comment, and
+///   `docs/Bevy/06 Assets and Scenes.md`).
 ///   Tried collapsing this into a blocking `AssetServer::wait_for_asset` call
 ///   in `Startup` instead (no async phase to represent at all) - it
 ///   deadlocks every time: the system that actually finalizes a load into
@@ -85,20 +103,26 @@ pub enum CharacterAnimationState {
 ///   runs in `PreUpdate`, which can't start until `Startup` returns. Blocking
 ///   inside `Startup` waits on something that can only ever happen *after*
 ///   `Startup` finishes - confirmed hung for 45+ seconds before reverting.
-///   `multi_asset_sync.rs`'s async variant avoids this by spawning the wait
-///   on `AsyncComputeTaskPool` - a genuinely separate thread, not the one
-///   running the schedule - so this stays an `Update`-polled state instead.
-/// - `Initialize`: assets are confirmed loaded, so one-time setup that needs
-///   them (building an `AnimationGraph`) can run in `OnEnter` with no
-///   readiness guard at all - entering the state *is* the guarantee. Also
-///   where setup still waits on entity-level facts (an entity spawning,
-///   which has no equivalent "finished" event - only a repeated query) that
-///   a state transition can't front-load a guarantee for.
+///   It's only safe from a genuinely separate thread (e.g.
+///   `AsyncComputeTaskPool`), never from inside the schedule - so this stays
+///   an `Update`-polled state instead.
+/// - `Initialize`: assets are confirmed loaded *and not failed*, so one-time
+///   setup that needs them (building an `AnimationGraph`) can run in
+///   `OnEnter` - entering the state *is* the guarantee. Also where setup
+///   waits on entity-level facts that asset readiness can't front-load: the
+///   scene spawner only spawns `test_world.scn.ron`'s entities once the asset
+///   is loaded, so the character's `AnimationPlayer` appears a frame or two
+///   into this state, not on entry.
 /// - `Playing`: gameplay.
 ///
-/// `CharacterControllerPlugin` drives Loading -> Initialize -> Playing today;
-/// any future plugin with its own loading-time dependency can reuse these
-/// same three stages instead of growing its own ad-hoc readiness check.
+/// `CharacterControllerPlugin` drives Initialize -> Playing today, but
+/// `Loading` is no longer its private concern: `PendingAssets` is pooled
+/// across plugins, so `TerrainPlugin`'s world load gates startup too (it
+/// didn't before - see that resource's doc comment).
+///
+/// There is no `LoadFailed` variant: a failed load is reported by
+/// `check_pending_assets` returning `Err`, which routes through bevy's error
+/// handler rather than parking the app in a state with nothing to render.
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum GameState {
     #[default]

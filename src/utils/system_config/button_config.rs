@@ -1,14 +1,62 @@
+use bevy::asset::io::Reader;
+use bevy::asset::{AssetLoader, LoadContext};
 use bevy::ecs::error::BevyError;
+use bevy::reflect::TypePath;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
 
-use super::ParsedConfigs;
 use crate::prelude::*;
 
-#[derive(Resource)]
+/// An `Asset`, not a `Resource`, and loaded through `AssetServer` rather than
+/// read with `std::fs` up front like [`GraphicsConfig`](super::GraphicsConfig).
+/// Nothing needs the bindings before the `App` exists - the only consumer is a
+/// system - and going through the asset system buys three things `std::fs`
+/// can't: hot-reload (edit `button_config.ron`, see the rebind live, which is
+/// what a rebinding UI will want anyway), no dependence on the process's
+/// working directory, and a path that keeps working off a non-filesystem
+/// `AssetSource` (wasm has no `std::fs`).
+#[derive(Asset, TypePath)]
 pub struct ButtonConfig {
     pub bindings: Vec<(PlayerAction, KeyCode)>,
+}
+
+/// Reads `.ron` into a [`ButtonConfig`]. All the actual work is
+/// [`parse_button_config`] below, which this shares with the tests - the
+/// loader only turns bytes into a `&str`.
+#[derive(Default, TypePath)]
+pub struct ButtonConfigLoader;
+
+impl AssetLoader for ButtonConfigLoader {
+    type Asset = ButtonConfig;
+    type Settings = ();
+    type Error = BevyError;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<ButtonConfig, BevyError> {
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| format!("failed to read button config: {e}"))?;
+        let contents = std::str::from_utf8(&bytes)
+            .map_err(|e| format!("button config is not valid UTF-8: {e}"))?;
+        parse_button_config(contents)
+    }
+
+    // Bare `ron`, which `.scn.ron` world files also end in - harmless, because
+    // `bevy_asset`'s loader lookup (`loaders::find`) tries the asset *type*
+    // first and only falls back to extension when the type is ambiguous. Both
+    // of these are typed loads (`load::<ButtonConfig>` /
+    // `load::<DynamicWorld>`) with exactly one loader registered per type, so
+    // neither can pick up the other's files. Extension matching also prefers
+    // the longest match, so `scn.ron` would win over `ron` regardless.
+    fn extensions(&self) -> &[&str] {
+        &["ron"]
+    }
 }
 
 // Placeholder config format: maps an action's name to the keys that trigger it.
@@ -70,10 +118,12 @@ fn keycode_from_str(name: &str) -> Option<KeyCode> {
     KEYCODES.iter().find(|(key_name, _)| *key_name == name).map(|(_, key)| *key)
 }
 
-// Pure parsing/validation, kept separate from the readers below so it's
-// testable without a filesystem. Unknown actions/keys are skipped with a
-// warning (soft failure, config just has stale entries); malformed RON is a
-// hard `Err` (the file isn't usable at all).
+// Pure parsing/validation, kept separate from the loader above so it's
+// testable without a filesystem (and, now, without an `App`). Unknown
+// actions/keys are skipped with a warning (soft failure, config just has
+// stale entries); malformed RON is a hard `Err` (the file isn't usable at
+// all), which the loader surfaces as a failed load - and therefore as a
+// `PendingAssets` failure rather than a silent default.
 fn parse_button_config(contents: &str) -> Result<ButtonConfig, BevyError> {
     let parsed: ButtonConfigFile =
         ron::from_str(contents).map_err(|e| format!("failed to parse button config: {e}"))?;
@@ -93,17 +143,6 @@ fn parse_button_config(contents: &str) -> Result<ButtonConfig, BevyError> {
         }
     }
     Ok(ButtonConfig { bindings })
-}
-
-// `pub(crate)`, not `pub`: only `utils::constants` (building `CONFIG_READERS`)
-// needs to name this directly. Everyone else goes through `system_config_reader`.
-pub(crate) fn button_config_reader(path: &Path, parsed: &mut ParsedConfigs) -> Result<(), BevyError> {
-    let contents = std::fs::read_to_string(path)
-        .map_err(|e| format!("failed to read button config at `{}`: {e}", path.display()))?;
-    let button_config = parse_button_config(&contents)
-        .map_err(|e| format!("{e} (in `{}`)", path.display()))?;
-    parsed.button = Some(button_config);
-    Ok(())
 }
 
 #[cfg(test)]
