@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Game/02 Concept.md",
+                "file": "Game/11 Staged Asset Loading.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "02 Concept"
+              "title": "11 Staged Asset Loading"
             }
           }
         ]
@@ -190,24 +190,25 @@
   },
   "active": "fd5bf5a55d5d8512",
   "lastOpenFiles": [
-    "Bevy/06 Assets and Scenes.md.tmp.24919.26f180fc82f3",
-    "Bevy/15 State Management.md.tmp.24919.7577038b4d7b",
-    "Bevy/15 State Management.md.tmp.24919.1c67227ba6ef",
-    "Game/01 Cleanup Backlog.md.tmp.24919.7a2e5738fabd",
-    "Bevy/15 State Management.md.tmp.24919.1c51c4497c8e",
-    "Game/01 Cleanup Backlog.md.tmp.24919.d07b38ec63c8",
-    "Game/01 Cleanup Backlog.md.tmp.24919.5f2a8fe5da11",
-    "Bevy/15 State Management.md.tmp.24919.a2422934e376",
-    "Game/01 Cleanup Backlog.md.tmp.24919.212a97594162",
-    "Game/01 Cleanup Backlog.md.tmp.24919.ae7cf64b54ea",
-    "Game/01 Cleanup Backlog.md.tmp.24919.d9b52fb70537",
+    "Game/11 Staged Asset Loading.md.tmp.64729.39464489a7e6",
+    "Game/11 Staged Asset Loading.md.tmp.64729.7bf46b5a1320",
+    "Game/11 Staged Asset Loading.md.tmp.64729.97848056d38c",
+    "Game/11 Staged Asset Loading.md.tmp.64729.94447e0f7958",
+    "Game/11 Staged Asset Loading.md.tmp.64729.237dcda0dc4c",
+    "Game/11 Staged Asset Loading.md.tmp.64729.0a8a9ea440bc",
+    "Game/11 Staged Asset Loading.md.tmp.64729.1a98ece5adb8",
+    "Game/11 Staged Asset Loading.md.tmp.64729.31454b168e6f",
+    "Game/11 Staged Asset Loading.md.tmp.64729.d14da0d31a47",
+    "Game/11 Staged Asset Loading.md.tmp.64729.2d983535dce8",
+    "Game/11 Staged Asset Loading.md.tmp.64729.6d0f482f5105",
     "Game/01 Cleanup Backlog.md",
+    "Game/11 Staged Asset Loading.md",
+    "Game/02 Concept.md",
     "Game/03 Phase 0 - Foundation.md",
     "Game/Level Format.md",
     "Game/04 Phase 1 - Core Combat Loop.md",
     "Game/06 Phase 3 - Waves and Opposition.md",
     "Game/05 Phase 2 - AI Scripting.md",
-    "Game/02 Concept.md",
     "Game/00 Roadmap Overview.md",
     "Game Plan.canvas",
     "Welcome.md",
