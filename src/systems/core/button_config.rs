@@ -1,25 +1,10 @@
+//! The *consumer* half of the button config. Getting the file loaded and held
+//! lives in `resources::button_config` (the `ButtonConfig` asset, its
+//! `AssetLoader`, `ButtonConfigHandle`, and `load_button_config`); what's left
+//! here is the part that isn't about a resource at all - turning loaded
+//! bindings into `InputMap` components on entities.
+
 use crate::prelude::*;
-use crate::utils::system_config::ButtonConfig;
-
-/// Keeps the `ButtonConfig` handle alive and findable. A strong handle also
-/// lives in `PendingAssets`, but that one is for the loading gate - this is
-/// the one anything else reads back through.
-#[derive(Resource)]
-pub struct ButtonConfigHandle(pub Handle<ButtonConfig>);
-
-// Kicks off the load and registers it with the loading gate, so a missing or
-// malformed `button_config.ron` fails startup loudly (via
-// `check_pending_assets`) instead of silently leaving the player with no
-// bindings.
-pub fn load_button_config(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut pending: ResMut<PendingAssets>,
-) {
-    let handle: Handle<ButtonConfig> = asset_server.load(BUTTON_CONFIG_ASSET_PATH);
-    pending.track(handle.clone());
-    commands.insert_resource(ButtonConfigHandle(handle));
-}
 
 // Builds the `InputMap` from the loaded asset, and rebuilds it in place when
 // the file changes on disk.

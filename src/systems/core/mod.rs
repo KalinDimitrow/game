@@ -1,13 +1,10 @@
-pub mod assets;
 pub mod button_config;
 pub mod input;
 
-pub use self::assets::*;
 pub use self::button_config::*;
 pub use self::input::*;
 
 use crate::prelude::*;
-use crate::utils::system_config::{ButtonConfig, ButtonConfigLoader};
 
 pub struct CorePlugin;
 
@@ -16,16 +13,21 @@ impl Plugin for CorePlugin {
         app.add_plugins(InputManagerPlugin::<CameraMovement>::default());
         app.add_plugins(InputManagerPlugin::<PlayerAction>::default());
 
-        // The loading gate. `PendingAssets` is pooled across plugins, so core
-        // owns it rather than whichever plugin happens to load something -
-        // that's what lets `TerrainPlugin`'s world load gate startup too,
-        // instead of only `CharacterControllerPlugin`'s glTFs.
+        // The loading gate (`resources::pending_assets`). `PendingAssets` is
+        // pooled across plugins, so core owns the scheduling rather than
+        // whichever plugin happens to load something - that's what lets
+        // `TerrainPlugin`'s world load gate startup too, instead of only
+        // `CharacterControllerPlugin`'s glTFs.
         app.init_resource::<PendingAssets>();
         app.add_systems(
             Update,
             check_pending_assets.run_if(in_state(GameState::Loading)),
         );
 
+        // Asset, loader and load system all come from
+        // `resources::button_config`; only `apply_button_config` below is this
+        // module's, since it writes `InputMap`s onto entities rather than
+        // producing a resource.
         app.init_asset::<ButtonConfig>();
         app.init_asset_loader::<ButtonConfigLoader>();
         app.add_systems(Startup, load_button_config);

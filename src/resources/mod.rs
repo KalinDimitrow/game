@@ -1,142 +1,41 @@
-use bevy::asset::{RecursiveDependencyLoadState, UntypedHandle};
-use bevy::prelude::*;
-use std::collections::HashMap;
+//! Bevy `Resource`s and the code that loads, initializes, holds and releases
+//! them. One file per resource, or per group of resources sharing a single
+//! lifecycle; this `mod.rs` carries only what applies to the module as a
+//! whole.
+//!
+//! Each file owns a resource's *whole* lifecycle, not just its type - the
+//! `Startup` system that kicks off the load, the system that turns loaded
+//! assets into a usable resource, and the type they produce all sit together,
+//! because changing one almost always means changing the others. What stays
+//! out is scheduling: the domain plugins (`CorePlugin`,
+//! `CharacterControllerPlugin`) still decide *when* these run, so a resource's
+//! load order remains visible next to the rest of its owner's wiring. This
+//! module defines; the plugins wire.
+//!
+//! Three things that look like they belong here and don't:
+//!
+//! - `systems::core::apply_button_config` reads [`ButtonConfig`] but writes
+//!   `InputMap` components onto entities. Getting a config loaded and held is
+//!   this module's job; acting on it is a system's.
+//! - `terrain::spawn_test_world` tracks the world handle in [`PendingAssets`],
+//!   but what it's really doing is spawning the `DynamicWorldRoot` entity that
+//!   owns it. The load is incidental to the spawn, and no resource comes out
+//!   of it.
+//! - `utils::system_config::GraphicsConfig` is a `Resource`, but it's read
+//!   with `std::fs` *before the `App` exists* (window creation needs the
+//!   resolution up front) and only becomes a resource at `insert_resource` in
+//!   `main`. None of its loading is Bevy's, so it stays with the rest of the
+//!   pre-`App` config readers.
+//!
+//! Imports in here are explicit (`bevy::prelude` plus named
+//! `crate::components` / `crate::utils` items) rather than `crate::prelude::*`:
+//! the crate prelude re-exports this module, so staying a leaf keeps that
+//! dependency one-directional.
 
-use crate::components::CharacterAnimationState;
+pub mod button_config;
+pub mod character_animations;
+pub mod pending_assets;
 
-/// Every asset handle `GameState::Loading` should wait on, pooled across
-/// plugins: each registers its own loads during `Startup`, and
-/// `systems::core::check_pending_assets` folds `AssetServer`'s load state over
-/// the whole list. So "the game finished loading" is one fact about one list,
-/// not a readiness check per plugin - which is what let `TerrainPlugin`'s
-/// world load join the gate (see "what this fixes" below).
-///
-/// # Why not the `AssetBarrier` this replaced
-///
-/// The previous version was a hand-rolled `Arc<AtomicU32>` tagged onto each
-/// load via `AssetServer::load_builder().with_guard(..)`, modeled on bevy's
-/// `asset/multi_asset_sync.rs`, with the guard's `Drop` decrementing the
-/// count. `AssetServer` already tracks all of this, and three things make it
-/// the better source of truth:
-///
-/// - **It tells success apart from failure.** The guard's `Drop` runs either
-///   way (`bevy_asset`'s `spawn_load_task` does `drop(guard)` unconditionally
-///   after logging), so `is_ready()` only ever meant "settled", never
-///   "usable". Every reader downstream had to `.expect()` on an invariant the
-///   barrier didn't actually provide - a missing `Idle.glb` released the
-///   barrier, entered `Initialize`, then panicked in
-///   `build_character_animation_graph`. `RecursiveDependencyLoadState` carries
-///   `Failed(Arc<AssetLoadError>)`, so that becomes an
-///   [`AssetLoadProgress::Failed`] with a path in it.
-/// - **It covers dependencies.** The guard is dropped as soon as *that one*
-///   asset's load task ends; anything the asset referenced is a separate task
-///   with no guard on it. That was invisible for the character glTFs (their
-///   clips are labeled sub-assets inside one file) but made the pattern
-///   useless for `test_world.scn.ron`, whose 7 glTF scenes are loader
-///   dependencies - guarding it would have proven only that the RON parsed.
-///   `recursive_dependency_load_state` is transitive, which is why tracking
-///   the one world handle here now covers every tile and the character mesh.
-/// - **No ordering caveat.** The guard dropped on the IO task pool thread,
-///   ahead of the asset landing in `Assets<T>`, so reading an asset was only
-///   safe by schedule accident (check in `Update`, read in a later
-///   `OnEnter`). Load state flips in `handle_internal_asset_events`
-///   (`PreUpdate`), where `process_asset_load` sets `Loaded` *and* inserts
-///   into `Assets<T>` under one `AssetInfos` write lock - so "loaded" and
-///   "gettable" are now the same instant, and the race the old doc comment
-///   had to warn about doesn't exist.
-///
-/// # What this fixes beyond the barrier
-///
-/// `GameState::Loading` used to wait only on the 4 character glTFs. The world
-/// (`terrain::spawn_test_world`) was loaded unguarded, so the state meant
-/// "the animation clips settled", not "the world is ready" - what covered the
-/// gap was `check_character_ready` polling for a `Character`, which only ever
-/// comes from the scene. That made an entity query load-bearing for asset
-/// readiness by accident, and left the original failure mode intact one state
-/// later: a missing `test_world.scn.ron` released the barrier, entered
-/// `Initialize`, and polled forever for a `Character` that could never spawn.
-#[derive(Resource, Default)]
-pub struct PendingAssets(Vec<UntypedHandle>);
-
-/// Outcome of folding `AssetServer`'s load state over every handle in
-/// [`PendingAssets`].
-pub enum AssetLoadProgress {
-    /// At least one load is still in flight and none have failed.
-    Loading,
-    /// Every load finished successfully; the assets are in `Assets<T>` now.
-    Ready,
-    /// One or more loads failed, one `path: error` string each.
-    Failed(Vec<String>),
-}
-
-impl PendingAssets {
-    /// Registers a handle to wait on. Takes the handle by value and keeps it:
-    /// a strong handle here also keeps the asset alive, which matters for the
-    /// world - its only other owner is a component on an entity.
-    pub fn track(&mut self, handle: impl Into<UntypedHandle>) {
-        self.0.push(handle.into());
-    }
-
-    /// Folds every tracked handle's `RecursiveDependencyLoadState` into one
-    /// answer. Failures win over still-loading, so a broken asset surfaces
-    /// immediately rather than after the slowest sibling finishes.
-    pub fn progress(&self, asset_server: &AssetServer) -> AssetLoadProgress {
-        let mut failures = Vec::new();
-        let mut still_loading = false;
-
-        for handle in &self.0 {
-            match asset_server.recursive_dependency_load_state(handle.id()) {
-                RecursiveDependencyLoadState::Loaded => {}
-                RecursiveDependencyLoadState::NotLoaded
-                | RecursiveDependencyLoadState::Loading => still_loading = true,
-                RecursiveDependencyLoadState::Failed(error) => {
-                    // The id's own path - for a failed *dependency* that's the
-                    // parent that pulled it in, and `error`'s `Display` names
-                    // the dependency itself, so both ends end up in the message.
-                    let path = asset_server
-                        .get_path(handle.id())
-                        .map_or_else(|| "<unknown path>".to_string(), |path| path.to_string());
-                    failures.push(format!("`{path}`: {error}"));
-                }
-            }
-        }
-
-        if !failures.is_empty() {
-            AssetLoadProgress::Failed(failures)
-        } else if still_loading {
-            AssetLoadProgress::Loading
-        } else {
-            AssetLoadProgress::Ready
-        }
-    }
-}
-
-/// One glTF per animation clip, keyed by the state that plays it. Populated by
-/// `systems::character_controller::load_character_gltf_handles` from
-/// `CHARACTER_ANIMATIONS`.
-///
-/// The mesh/skeleton isn't here: it arrives as a loader dependency of
-/// `test_world.scn.ron` (entity 10's `WorldAssetRoot`), which [`PendingAssets`]
-/// tracks recursively. The separate `mesh` handle this used to carry existed
-/// only to pad the old barrier, was read by nothing, and tracked the wrong
-/// asset anyway - `character.glb`, the root `Gltf`, where the scene spawns
-/// `character.glb#Scene0`, a distinct `AssetId`.
-#[derive(Resource)]
-pub struct CharacterGltfHandles {
-    pub animations: HashMap<CharacterAnimationState, Handle<Gltf>>,
-}
-
-/// Built by `systems::character_controller::build_character_animation_graph`
-/// once every handle in [`CharacterGltfHandles`] has loaded.
-///
-/// Keyed by the state that plays each clip, rather than a `Vec` indexed by
-/// `CharacterAnimationState`'s variant order. That ordinal agreement was
-/// unchecked and had to be kept in sync by comment across three places at
-/// once: the load order, `AnimationGraph::from_clips`'s argument order, and a
-/// `match` in `apply_character_animation`. A map makes the key the thing the
-/// lookup is actually about.
-#[derive(Resource)]
-pub struct CharacterAnimations {
-    pub nodes: HashMap<CharacterAnimationState, AnimationNodeIndex>,
-    pub graph_handle: Handle<AnimationGraph>,
-}
+pub use self::button_config::*;
+pub use self::character_animations::*;
+pub use self::pending_assets::*;

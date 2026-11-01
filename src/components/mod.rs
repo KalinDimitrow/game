@@ -93,7 +93,7 @@ pub enum CharacterAnimationState {
 /// - `Loading`: waiting on assets to finish their background load. Every
 ///   plugin registers its own handles into
 ///   [`PendingAssets`](crate::resources::PendingAssets) during `Startup`, and
-///   `systems::core::check_pending_assets` drives the transition off
+///   `resources::check_pending_assets` drives the transition off
 ///   `AssetServer`'s own load state (see `PendingAssets`'s doc comment, and
 ///   `docs/Bevy/06 Assets and Scenes.md`).
 ///   Tried collapsing this into a blocking `AssetServer::wait_for_asset` call

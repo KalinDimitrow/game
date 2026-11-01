@@ -12,19 +12,22 @@
 //!
 //! `button_config` used to be read here too. It isn't anymore: nothing needs
 //! the bindings before the `App` exists, so it's a `ButtonConfig` *asset*
-//! loaded through `AssetServer` (see `button_config::ButtonConfigLoader` and
-//! `systems::core::button_config`), which gets it hot-reload and a path that
-//! doesn't depend on the working directory. That leaves `CONFIG_READERS` with
-//! one entry today; the table stays because the criterion for being in it is
-//! a real one ("needed before the `App` exists"), not because two things
-//! happened to share a shape.
+//! loaded through `AssetServer`, and it lives with the rest of the
+//! Bevy-side loading in `resources::button_config` - which gets it hot-reload
+//! and a path that doesn't depend on the working directory. That leaves
+//! `CONFIG_READERS` with one entry today; the table stays because the
+//! criterion for being in it is a real one ("needed before the `App`
+//! exists"), not because two things happened to share a shape.
+//!
+//! `GraphicsConfig` is a `Resource` and still stays here rather than under
+//! `resources/`, for the same criterion read the other way: none of its
+//! loading is Bevy's. It's `std::fs` before the `App` exists, and it only
+//! becomes a resource at `insert_resource` in `main`.
 
 use bevy::ecs::error::BevyError;
 use std::path::Path;
 
-pub mod button_config;
 pub mod graphics_config;
-pub use self::button_config::*;
 pub use self::graphics_config::*;
 
 /// Output of `system_config_reader` - purely a transient carrier for the

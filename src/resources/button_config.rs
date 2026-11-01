@@ -1,14 +1,17 @@
 use bevy::asset::io::Reader;
 use bevy::asset::{AssetLoader, LoadContext};
-use bevy::ecs::error::BevyError;
+use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::prelude::*;
+use super::PendingAssets;
+use crate::components::PlayerAction;
+use crate::utils::constants::BUTTON_CONFIG_ASSET_PATH;
 
 /// An `Asset`, not a `Resource`, and loaded through `AssetServer` rather than
-/// read with `std::fs` up front like [`GraphicsConfig`](super::GraphicsConfig).
+/// read with `std::fs` up front like
+/// [`GraphicsConfig`](crate::utils::system_config::GraphicsConfig).
 /// Nothing needs the bindings before the `App` exists - the only consumer is a
 /// system - and going through the asset system buys three things `std::fs`
 /// can't: hot-reload (edit `button_config.ron`, see the rebind live, which is
@@ -18,6 +21,30 @@ use crate::prelude::*;
 #[derive(Asset, TypePath)]
 pub struct ButtonConfig {
     pub bindings: Vec<(PlayerAction, KeyCode)>,
+}
+
+/// Keeps the [`ButtonConfig`] handle alive and findable. A strong handle also
+/// lives in [`PendingAssets`], but that one is for the loading gate - this is
+/// the one anything else reads back through.
+#[derive(Resource)]
+pub struct ButtonConfigHandle(pub Handle<ButtonConfig>);
+
+// Kicks off the load and registers it with the loading gate, so a missing or
+// malformed `button_config.ron` fails startup loudly (via
+// `check_pending_assets`) instead of silently leaving the player with no
+// bindings. Scheduled on `Startup` by `CorePlugin`.
+//
+// Only the load side lives here. Turning a loaded `ButtonConfig` into an
+// `InputMap` on an entity is `systems::core::apply_button_config`'s job: this
+// module's concern ends at "the config is loaded and held".
+pub fn load_button_config(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut pending: ResMut<PendingAssets>,
+) {
+    let handle: Handle<ButtonConfig> = asset_server.load(BUTTON_CONFIG_ASSET_PATH);
+    pending.track(handle.clone());
+    commands.insert_resource(ButtonConfigHandle(handle));
 }
 
 /// Reads `.ron` into a [`ButtonConfig`]. All the actual work is

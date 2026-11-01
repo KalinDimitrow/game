@@ -9,7 +9,7 @@ pub const GRAPHICS_CONFIG_PATH: &str = "data/config/display.ron";
 
 // Every file `system_config_reader` knows how to read, paired with the
 // reader that parses it - same (name, value) shape as `KEYCODES` in
-// `utils::system_config::button_config`. Every reader shares `ConfigReader`'s
+// `resources::button_config`. Every reader shares `ConfigReader`'s
 // signature, so `system_config_reader` can call the one next to a given path
 // directly instead of matching on some tag to find it. Adding a new config
 // file is a one-line change here rather than touching the reader itself.
@@ -18,7 +18,7 @@ pub const GRAPHICS_CONFIG_PATH: &str = "data/config/display.ron";
 // this table is config that has to be read *before the `App` exists*, which
 // is really just "whatever window creation needs". `button_config.ron` has no
 // such constraint - its only consumer is a system - so it moved to the asset
-// system and gets hot-reload for free; see `systems::core::button_config`.
+// system and gets hot-reload for free; see `resources::button_config`.
 pub const CONFIG_READERS: &[(&str, ConfigReader)] =
     &[(GRAPHICS_CONFIG_PATH, graphics_config_reader)];
 
@@ -60,7 +60,7 @@ pub const TEST_WORLD_PATH: &str = "worlds/test_world.scn.ron";
 // line here, instead of a const + a resource field + an argument in the right
 // ordinal position in `AnimationGraph::from_clips` + a `match` arm. Same
 // (name, value) shape as `CONFIG_READERS` above and `KEYCODES` in
-// `utils::system_config::button_config`.
+// `resources::button_config`.
 pub const CHARACTER_ANIMATIONS: &[(CharacterAnimationState, &str)] = &[
     (
         CharacterAnimationState::Idle,
