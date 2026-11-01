@@ -149,7 +149,11 @@
       "Bash(readelf -d target/debug/game)",
       "Bash(readelf -d target/debug/deps/libbevy_dylib-6de9b8951717dca5.so)",
       "Bash(timeout 580 cargo build --bin game)",
-      "Bash(ldd target/debug/game)"
+      "Bash(ldd target/debug/game)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo check --all-targets)",
+      "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game RUSTDOCFLAGS=\"-D rustdoc::broken_intra_doc_links\" cargo doc --no-deps)",
+      "Bash(ls vendor/ 2>/dev/null | head; echo \"=== find bevy_ecs source ===\"; ls ~/.cargo/registry/src/*/ 2>/dev/null | grep -E \"^bevy_ecs-0.20|^bevy_state-0.20|^bevy_asset-0.20\" | head)",
+      "Bash(echo \"--- exit: $? \\(1 = clean\\) ---\")"
     ]
   }
 }
