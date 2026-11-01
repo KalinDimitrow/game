@@ -153,7 +153,24 @@
       "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game cargo check --all-targets)",
       "Bash(CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game RUSTDOCFLAGS=\"-D rustdoc::broken_intra_doc_links\" cargo doc --no-deps)",
       "Bash(ls vendor/ 2>/dev/null | head; echo \"=== find bevy_ecs source ===\"; ls ~/.cargo/registry/src/*/ 2>/dev/null | grep -E \"^bevy_ecs-0.20|^bevy_state-0.20|^bevy_asset-0.20\" | head)",
-      "Bash(echo \"--- exit: $? \\(1 = clean\\) ---\")"
+      "Bash(echo \"--- exit: $? \\(1 = clean\\) ---\")",
+      "Bash(grep -n \"^#\\\\{2,4\\\\} \" \"docs/Game/11 Staged Asset Loading.md\")",
+      "Bash(sed -n '353,566p' \"docs/Game/11 Staged Asset Loading.md\")",
+      "Bash(grep -n \"^#\\\\{3,4\\\\} \\\\|^## \" \"docs/Game/11 Staged Asset Loading.md\")",
+      "Bash(read -r l)",
+      "Bash([ -f \"docs/Game/$l.md\" ])",
+      "Bash([ -f \"docs/Bevy/$l.md\" ])",
+      "Bash(gh api *)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/NiklasEi/bevy_asset_loader/main/bevy_asset_loader/examples/two_collections.rs)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/NiklasEi/bevy_asset_loader/main/bevy_asset_loader/examples/dynamic_asset.rs)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/NiklasEi/bevy_asset_loader/main/bevy_asset_loader/assets/dynamic_asset.assets.ron)",
+      "Bash(curl -fsSL https://raw.githubusercontent.com/NiklasEi/bevy_asset_loader/main/bevy_asset_loader/examples/failure_state.rs)",
+      "Bash(find / -maxdepth 6 -iname \"bevy_asset-0.20.0\" -type d)",
+      "Read(//home/claude/.cargo-target-cache/**)",
+      "Bash(ls ~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ 2>&1 | grep -i \"bevy_asset\\\\|bevy_ecs\\\\|bevy_state\" )",
+      "Bash(cat -A /dev/null; nl -ba \"docs/Game/12 Content Catalogue.md\" | sed -n '1,400p')",
+      "Bash(grep -n \"LoadStage::Catalogue\\\\|Res<Catalogue>\\\\|\\\\`Catalogue\\\\`\" \"docs/Game/11 Staged Asset Loading.md\")"
     ]
   }
 }
