@@ -350,94 +350,195 @@ The one place a *runtime* asset→stage mapping is genuinely needed is the rewin
 lookup in the hot-reload section — and there it's per asset *type* per consuming
 stage, declared in one line of plugin wiring, not per file.
 
-### 3. Asset inventory → *this* is what's worth generating
+### 3. What the game loads → the asset description ([[12 Asset Description]])
 
-What a build script genuinely knows, and Rust otherwise doesn't, is **what
-files exist**. That's worth generating, for three reasons, one of which is a
-trap specific to this project:
+**Rewritten 2026-10-30.** The first two attempts at this section both got the
+model wrong: the hardcoded `GROUPS` table in `build.rs`, then a manifest of
+"load roots" with `test_world.scn.ron` as the worked example. The second is the
+instructive failure — it described Bevy's *file* reachability rather than the
+game's *content*, which makes worlds the entry point and therefore makes shared
+content, unreferenced-but-valid content, and up-front verification all
+awkward-to-impossible. [[12 Asset Description]] has the full argument and the
+format; what matters here is the consequence for staging.
+
+The asset description is a declared inventory of content *entities* — textures, models,
+animations, properties, skills, units, worlds — referencing each other by typed
+logical ID (`Model("knight")`), resolved and fully validated before anything
+heavy loads. Two consequences reshape the stage list:
+
+- **Worlds load last, not first.** A world is the most derived kind in the
+  asset description: it names units, which name models and skills, which name
+  animations and textures. It gets its own late stage rather than being the
+  root whose dependencies drag everything else in.
+- **There is a load-free validation stage.** Resolving IDs to indices and
+  proving nothing dangles is pure computation between two loads, which is
+  exactly the stage-boundary criterion from §triage. It is also the stage that
+  earns the whole design: a missing skill reference fails with a list of every
+  problem at once, before a single mesh is fetched.
+
+#### The generated inventory is still worth it, for a narrower job
+
+What a build script knows and Rust otherwise doesn't is **what files exist**.
+With the asset description owning *which* content exists, the generated artifact's job
+shrinks to verification plus the one case where a directory listing is the
+right answer:
 
 - **`load_folder` is silently broken on wasm.** It looks like the native answer
-  to "load everything in `units/`", and on desktop it works —
+  to "load every file in this directory", and on desktop it works —
   `LoadedFolder.handles` is `#[dependency]`, so one folder handle covers the
-  whole directory recursively under `recursive_dependency_load_state`. But
+  directory recursively under `recursive_dependency_load_state`. But
   `bevy_asset`'s `HttpWasmAssetReader::read_directory` logs
   `"Reading directories is not supported"` and returns an **empty** stream
-  (`bevy_asset-0.20.0/src/io/wasm.rs:132`). You get zero assets and a
-  successfully-loaded folder. `Cargo.toml` has a `wasm-release` profile, so
-  this is a live concern, not a hypothetical.
-- **Determinate progress.** A loading bar needs a denominator before the loads
-  start. Generated inventory gives it; runtime directory discovery can't.
-- **Typos become compile errors.** A wrong path in `CHARACTER_ANIMATIONS` is
-  currently a runtime load failure.
+  (`bevy_asset-0.20.0/src/io/wasm.rs:132`): zero assets, folder reports loaded.
+  `Cargo.toml` has a `wasm-release` profile, so this is live. If a kind ever
+  wants "everything in `units/`" rather than explicit entries, it needs a
+  generated list, not `load_folder`.
+- **Dangling file references become build errors.** A path in a declared entry
+  that doesn't exist on disk is checkable at build time, and is currently a
+  runtime load failure. This is the exact check, as opposed to the heuristic one
+  below.
+- **Orphan detection.** Files under `data/assets/` that no declared entry
+  names: dead weight or a missing entry. A warning rather than an error, since
+  a world editor legitimately wants content nothing references yet, with an
+  explicit allow-list to keep it honest. Against the repo as of 2026-10-30 this
+  finds three immediately — `models/character/Fox.glb`,
+  `.../basic_character/Running.glb` and `.../basic_character/Zombie_Attack.glb`
+  are named by no `.rs` and no `.ron`.
+- **Progress weights.** Transitive closure size per declared entry, so a
+  loading bar weights a world (9 files) above a single property declaration.
 
-`build.rs` already exists (for rpath), so this is an addition to it:
+#### When to build it
 
-```rust
-/// Emit `const` path lists for convention-named asset groups, so a stage's
-/// `OnEnter` systems can iterate a directory's contents without `load_folder`.
-fn emit_asset_inventory() {
-    // (const name, directory under data/assets, extension suffix)
-    const GROUPS: &[(&str, &str, &str)] = &[
-        ("CHARACTER_CLIPS", "models/characters/basic_character", ".glb"),
-        ("UNIT_DEFS", "units", ".unit.ron"),
-        ("SCRIPTS", "scripts", ".script.ron"),
-    ];
+The asset description itself is the near-term work — it's what removes the path
+constants and makes the content data-driven. The build-time half can trail it:
 
-    let mut out = String::new();
-    for (name, dir, ext) in GROUPS {
-        let paths = collect_sorted(Path::new("data/assets").join(dir), ext);
-        out.push_str(&format!("pub const {name}: &[&str] = &[\n"));
-        for path in paths {
-            // Asset-server-relative, forward slashes, sorted for determinism.
-            out.push_str(&format!("    {path:?},\n"));
-        }
-        out.push_str("];\n");
-    }
-
-    let dest = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("asset_inventory.rs");
-    std::fs::write(dest, out).expect("failed to write asset inventory");
-    println!("cargo::rerun-if-changed=data/assets");
-}
-```
-
-Consumed as `include!(concat!(env!("OUT_DIR"), "/asset_inventory.rs"));` from a
-`resources::inventory` module, and used from a stage's `OnEnter`:
-
-```rust
-// OnEnter(LoadStage::Content)
-fn load_unit_defs(asset_server: Res<AssetServer>, mut gate: ResMut<LoadGate>) {
-    for path in inventory::UNIT_DEFS {
-        gate.track(asset_server.load::<UnitDef>(*path));
-    }
-}
-```
-
-Note the ordering constraint this implies: generated inventory is a *sorted*
-list, so iteration order is stable across machines. Worth keeping, because
-"loads in directory order" is the kind of thing that works until it doesn't.
+1. **`tools/check_assets.sh`** — dangling + orphan checks as a script. Needs no
+   asset-description machinery, no codegen, no build integration, and finds
+   the three dead files today.
+2. **Fold the same checks into `build.rs`** once `assets.dsc.ron` exists, so a
+   bad reference fails the build rather than the run.
+3. **Generated per-kind path lists** only if a kind outgrows explicit entries.
+   Possibly never.
 
 ### 4. Runtime-discovered names → one stage's `OnEnter` reading the last one's assets
 
-The one case the inventory genuinely can't cover: a manifest asset whose
-*contents* name what to load. That's what the `Index` stage exists for — it
-loads indices, and `OnEnter(LoadStage::Content)` reads them:
+The case no build-time artifact can cover: an asset whose *contents* name what
+to load. The asset description has exactly two such instances — `assets.dsc.ron`
+(parsed as `AssetDescriptionIndex`) naming the per-kind files, and the resolved
+`AssetDescription` naming the payload — and each is a stage boundary for
+precisely this reason:
 
 ```rust
-// OnEnter(LoadStage::Content)
-fn load_indexed_units(
+// OnEnter(LoadStage::Payload)
+fn load_payload(
     asset_server: Res<AssetServer>,
-    indices: Res<Assets<UnitIndex>>,
-    index_handle: Res<UnitIndexHandle>,
+    description: Res<AssetDescription>,
     mut gate: ResMut<LoadGate>,
 ) {
-    // No readiness guard: `Index` completed, and `StateTransition` runs after
-    // `PreUpdate`, so the asset is in `Assets<T>` by the time `OnEnter` sees it.
-    let index = indices.get(&index_handle.0).expect("Index stage completed");
-    for entry in &index.units {
-        gate.track(asset_server.load::<UnitDef>(&entry.path));
+    // No readiness guard: `Resolve` completed, so every path here came from an
+    // entry that validated. `StateTransition` runs after `PreUpdate`, so
+    // anything `Declarations` loaded is already in `Assets<T>`.
+    for animation in description.animations() {
+        gate.track(asset_server.load::<Gltf>(&animation.clip));
+    }
+    for model in description.models() {
+        gate.track(asset_server.load::<Scene>(&model.scene));
     }
 }
 ```
+
+This is also the answer to "which asset belongs to which stage" in its final
+form: **not a field in the descriptor and not a computed map, but which stage's
+`OnEnter` reads `AssetDescription` for it.** The asset description says what
+exists; a dozen lines of Rust across a handful of stages say when.
+
+#### `assets.dsc.ron` needs a dedicated loader, its own stage, and hot reload — all three, and none of them optional
+
+**Added 2026-10-30.** Raised as a question — should the root descriptor have
+its own `AssetLoader` type, load first in its own state, and support hot
+reload? Yes to all three, and the first one is load-bearing for the rest of
+this page rather than a nice-to-have: `OnEnter(LoadStage::Declarations)` has to
+ask "which files did the root name?", and the only way to ask that through the
+asset system is `Res<Assets<AssetDescriptionIndex>>::get(&handle)`. There is no
+untyped version of that call. Skipping the dedicated type doesn't simplify
+anything — it just forces a `std::fs::read_to_string` + manual `ron::from_str`
+outside the asset system, which is exactly the out-of-band read this project
+already rejected for `ButtonConfig` once that file had no pre-`App` constraint
+(see `utils::system_config`'s module doc).
+
+**The type.** `resources::button_config::ButtonConfigLoader` (`src/resources/button_config.rs:53-54`)
+is the template, already compiling and tested in this repo:
+
+```rust
+#[derive(Asset, TypePath)]
+pub struct AssetDescriptionIndex {
+    pub kinds: Vec<(ContentKind, String)>,
+}
+
+#[derive(Default, TypePath)]
+pub struct AssetDescriptionIndexLoader;
+
+impl AssetLoader for AssetDescriptionIndexLoader {
+    type Asset = AssetDescriptionIndex;
+    type Settings = ();
+    type Error = BevyError;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<AssetDescriptionIndex, BevyError> {
+        // Same read-to-end -> &str -> ron::from_str shape as ButtonConfigLoader.
+        // ...
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["ron"]
+    }
+}
+```
+
+Note the name split this forces, and why it's worth keeping: `AssetDescriptionIndex`
+is the raw kind→file list parsed straight off `assets.dsc.ron`; `AssetDescription`
+(§3 above) is the fully resolved, validated resource `Resolve` builds from
+everything `Declarations` loaded using that list. They're different types with
+different lifetimes — the Index exists only to drive one `OnEnter`, the
+`AssetDescription` is what every later stage reads — and collapsing their names
+back into one "catalogue" is the ambiguity this rename exists to remove.
+
+The same reasoning applies to every per-kind file (`models.ron`, `units.ron`, …)
+— `Resolve` needs `Res<Assets<RawModelFile>>` etc. for the identical structural
+reason. Eight hand-rolled loaders differing only in their `Asset` type is the
+obvious next question; a generic `RonAssetLoader<T>` implementing `AssetLoader`
+once and registered per `T` is the standard answer (`bevy_common_assets`'s
+`RonAssetPlugin<T>` does this, as I recall — confirm its current API against
+the crate before depending on it rather than hand-rolling eight copies).
+
+**Its own stage.** Already true, not a new requirement: `Index` is a stage
+distinct from `Declarations` *because* the file list isn't knowable until the
+root is parsed — the canonical "name not known until a load finishes" boundary
+from §triage. Nothing about adding the loader type changes the stage table;
+the type is what makes `OnEnter(LoadStage::Declarations)`'s read of
+`AssetDescriptionIndex` well-typed instead of hypothetical.
+
+**Hot reload.** Also already covered by [§Hot reload is a backward
+transition](#hot-reload-is-a-backward-transition-not-a-second-code-path), and
+it's the simplest registration in the whole scheme, because it's the one case
+with no ambiguity about which stage consumes the asset — there's exactly one
+reader, `Declarations`'s `OnEnter`:
+
+```rust
+app.add_systems(Update, rewind_on_change::<AssetDescriptionIndex>(LoadStage::Index));
+```
+
+The honest caveat: it's also the *widest possible* rewind target in the system.
+Editing `assets.dsc.ron` invalidates everything downstream — `Declarations`,
+`Resolve`, `Payload`, `Derive`, `World`, `Instantiate` all re-run, and the last
+two aren't free to re-enter (see §re-entrancy costs). Still correct under the
+re-entrancy rules already specified for every stage; just the slowest reload
+the design can produce, which is worth knowing going in rather than discovering
+mid-edit.
 
 ## On a dynamic number of stages
 
@@ -606,56 +707,93 @@ and re-instantiates through the same path as startup. No separate
 
 ## Proposed stages for this project
 
-| Stage | Purpose | Has content today? | Re-entrant? |
-|---|---|---|---|
-| `Boot` | Assets the loading screen itself needs (font, button config). Must finish before any progress can be *displayed*. | Yes — `button_config.ron` moves here | Trivially |
-| `Index` | Manifests/indices: unit roster, script list, level index. | No — placeholder until [[05 Phase 2 - AI Scripting]] | Trivially |
-| `Content` | Everything named statically or by an index. The big parallel stage. | Yes — character clips, `test_world.scn.ron` | Yes, loads are cached |
-| `Derive` | Runtime-built assets: `AnimationGraph`, compiled scripts, name→handle registries. | Yes — `build_character_animation_graph` | Yes, `insert_resource` overwrites |
-| `Instantiate` | Scene spawn + entity-level waits. | Yes — `finish_character_initialization` | **Needs care** — see re-entrancy costs |
-| `Warm` | Pipeline/shader warm-up before gameplay. | No — add when content is big enough to stutter | Yes |
-| `Settled` | Terminal. `OnEnter` sets `GameState::Playing` (once, ever). | — | — |
+**Revised 2026-10-30** for [[12 Asset Description]]: worlds moved to a late
+stage, and `Resolve` was added as a load-free validation gate. (The stage
+formerly named `Catalogue` is `Index` below — renamed alongside the resolved
+resource, `AssetDescription`, to keep the two distinct.)
 
-`Boot` existing at all is a consequence worth noting: a loading screen has
-assets, so there must be a stage before the one it reports on. [[11 UI]] and
-`showcase/loading_screen.rs` are the references for the screen itself.
+| Stage | Purpose | Loads? | Has content today? | Re-entrant? |
+|---|---|---|---|---|
+| `Boot` | What the loading screen itself needs (font, button config). Must finish before progress can be *displayed*. | yes | Yes — `button_config.ron` moves here | Trivially |
+| `Index` | `assets.dsc.ron` only — the standalone descriptor at the top of `data/assets/`, parsed as `AssetDescriptionIndex`. Names the per-kind declaration files, so this is a genuine name-not-known-yet boundary. | yes | No — new | Trivially |
+| `Declarations` | Every per-kind file `AssetDescriptionIndex` named. Small text files, fully parallel. | yes | No — new | Trivially |
+| `Resolve` | **No loading.** Resolve every ID to an index in one pass, prove the reference graph acyclic, report every problem found at once, build the `AssetDescription` resource. | no | No — new | Yes, rebuilt wholesale |
+| `Payload` | The heavy binaries the resolved `AssetDescription` points at: meshes, textures, animation clips. Exact denominator, fully parallel. | yes | Yes — character clips | Yes, loads are cached |
+| `Derive` | Runtime-built assets: `AnimationGraph`, atlases, compiled scripts. | no | Yes — `build_character_animation_graph` | Yes, `insert_resource` overwrites |
+| `World` | The chosen `World` entry's `.scn.ron`. Last, because it references IDs that are by now known-valid. | yes | Yes — `test_world.scn.ron` | Needs despawn of the previous world |
+| `Instantiate` | Scene spawn + entity-level waits. | no | Yes — `finish_character_initialization` | **Needs care** — see re-entrancy costs |
+| `Warm` | Pipeline/shader warm-up before gameplay. | no | No — add when content is big enough to stutter | Yes |
+| `Settled` | Terminal. `OnEnter` sets `GameState::Playing` (once, ever). | — | — | — |
 
-The re-entrancy column is the new load-bearing one — it's the per-stage property
-the rewind model asks you to state and review, and `Instantiate` is the only
-current stage where it isn't free.
+Three of these earn comment:
+
+- **`Boot` exists because the loading screen has assets of its own**, so there
+  must be a stage before the one it reports on. [[11 UI]] and
+  `showcase/loading_screen.rs` are the references for the screen itself.
+- **`Resolve` is the stage that justifies the architecture.** It loads nothing
+  and is pure computation between two loads — the §triage criterion exactly —
+  and it's where "verify there are no missing pieces before operating" lives. It
+  can technically be collapsed into `OnEnter(Payload)`, since that system has to
+  read the resolved `AssetDescription` to know what to track; keeping it separate buys
+  clean error attribution and a distinct "Validating content…" progress label,
+  which is worth one state variant.
+- **`World` being late is the point of the asset-description revision.** It
+  also makes the world-editor case fall out for free: an editor needs
+  `AssetDescription` resolved and the payload loaded but no world at all, which
+  is just a different terminal stage — stop at `Derive`.
+
+The re-entrancy column is the load-bearing one for hot reload: it's the
+per-stage property the rewind model asks you to state and review. `Instantiate`
+and `World` are the two where it isn't free.
 
 ## Migration path
 
-Each step is independently landable and leaves the app working.
+Each step is independently landable and leaves the app working. Two tracks —
+the **machine** (steps 1–4) and the **asset description** (5–8) — which meet at step 6.
+
+**Machine track**
 
 1. **`PendingAssets` → `LoadGate`.** Mechanical: add the named-blocker set
    alongside the existing handle list, keep `progress` as-is. No behavior
    change, nothing else moves yet.
-2. **Add the `LoadStage` enum + `advance_stage` + the `OnExit` gate reset**,
-   with every current load system on `OnEnter(LoadStage::Content)` and the two
-   `Initialize` systems on `settling(..)` of `Derive`/`Instantiate`.
-   `GameState` collapses to `Loading`/`Playing` in the same step, since
-   `Initialize` has nowhere left to live. This is the step that proves the
-   machine, and it's a net deletion.
+2. **Add the `LoadStage` enum + `advance_stage` + the `OnExit` gate reset.**
+   Start with the stages that have content *today* only — `Payload`, `Derive`,
+   `Instantiate`, `Settled` — with the current load systems on
+   `OnEnter(LoadStage::Payload)` and the two `Initialize` systems on
+   `settling(..)`. `GameState` collapses to `Loading`/`Playing` in the same
+   step, since `Initialize` has nowhere left to live. Net deletion, and it
+   proves the machine before any asset-description work.
 3. **Make `Instantiate` re-entrant** — `DespawnOnExit(LoadStage::Instantiate)`
    on anything it spawns, blockers armed in `OnEnter` rather than `Startup`.
-   Do this *before* step 4, because step 4 is what starts exercising re-entry.
+   Before step 4, because step 4 is what starts exercising re-entry.
 4. **Add `RewindRequest` + `apply_rewind` + one `rewind_on_change::<T>` per
    consuming stage.** Hot reload starts working here, through the same path as
    cold load. Verify by editing `button_config.ron` and an animation glTF with
    the app running and `file_watcher` enabled.
-5. **Add `build.rs` inventory generation**, replace `CHARACTER_ANIMATIONS`'
-   hand-written paths with a generated group.
-6. **Add `Boot` + the loading screen**, driven by a `LoadProgress` resource
-   (`stage`, `position`/`ORDER.len()`, `loaded`/`total`,
-   `waiting_on: Vec<&'static str>` — the blocker names).
-7. **Add `Index`/manifest loading** when unit defs exist, `Warm` when a
-   first-frame stutter is actually observable, and level switching (a rewind to
-   `Index`) when there's a second level.
 
-Steps 1–4 are the plan proper and should land together-ish, since 4 is what
-makes the whole thing worth doing. 5–7 are driven by content that doesn't exist
-yet and shouldn't be built ahead of it.
+**Asset description track** ([[12 Asset Description]])
+
+5. **`tools/check_assets.sh`** — dangling + orphan checks as a script.
+   Independent of everything else, and worth doing first for the quick win: it
+   finds three dead asset files today.
+6. **Add the asset description: raw types, `assets.dsc.ron` + per-kind files, the
+   resolve/validate pass**, and the `Index`/`Declarations`/`Resolve` stages
+   in front of `Payload`. Migrate `CHARACTER_ANIMATIONS` and `TEST_WORLD_PATH`
+   into entries; `Payload` now tracks what the resolved `AssetDescription`
+   names rather than what a constant does. This is where the path constants die.
+7. **Split `World` out of `Payload`** as its own late stage, so the world
+   references an `AssetDescription` that's already proven complete. Level
+   switching becomes a rewind to `World` (or `Resolve`, if the asset
+   description itself changed).
+8. **Add `Boot` + the loading screen**, driven by a `LoadProgress` resource
+   (`stage`, `position`/`ORDER.len()`, `loaded`/`total`,
+   `waiting_on: Vec<&'static str>` — the blocker names), with per-entry
+   progress weights from the asset-description scan. Then `Warm` when a first-frame
+   stutter is actually observable.
+
+Steps 1–4 should land together-ish, since 4 is what makes the machine worth
+having. 5 is free. 6 is the substantial one and the real goal — everything
+before it is scaffolding that makes 6 safe to attempt.
 
 ### Testability
 
@@ -678,7 +816,16 @@ regressions were both found by reading rather than by failing.
 - **A dependency-graph solver.** `recursive_dependency_load_state` is the solver.
 - **A reverse dependency map for rewind targeting.** `queue_ancestors` already
   propagates reloads up to the handle you tracked — see the verified note above.
-- **A generated asset→stage map** — see descriptor §2.
+- **A generated asset→stage map, even one computed from the reference graph** —
+  the reference graph and the stage graph are different graphs; see descriptor
+  §2 and §3.
+- **A descriptor built around load roots** rather than content entities — the
+  mistake the second draft of descriptor §3 made; see
+  [[12 Asset Description]] §"The mistake this corrects".
+- **Depth-sorting the content reference graph into load stages.** Topological
+  order over content references is the wrong axis: it serializes loads that are
+  independent. The sort's job is cycle detection, inside one stage — see
+  [[12 Asset Description]] §"What the topological sort is for".
 - **`load_folder`** on anything that must work in `wasm-release`.
 - **A separate hot-reload code path** — that's the point of the revision.
 - **`LoadStage` as a `SubStates` of `GameState::Loading`** — see the hazard.
@@ -692,8 +839,10 @@ regressions were both found by reading rather than by failing.
   hot-reloaded scripts), [[03 Phase 0 - Foundation]] item 4 (level switching —
   a level change is a rewind to `LoadStage::Index`, i.e. the same primitive as
   hot reload with a wider target)
-- 🔗 Related: [[11 UI]] (`showcase/loading_screen.rs`), [[20 Platform Targets]]
-  (the wasm directory-listing trap), [[01 Cleanup Backlog]]
+- 🔗 Related: [[12 Asset Description]] (what gets loaded through these stages,
+  and the reason the stage list has a `Resolve` and a late `World`), [[11 UI]]
+  (`showcase/loading_screen.rs`), [[20 Platform Targets]] (the wasm
+  directory-listing trap), [[01 Cleanup Backlog]]
 
 Note for whoever implements this: [[06 Assets and Scenes]] §"Waiting on a batch
 of loads" and [[15 State Management]]'s "Used in `game`" both still describe the
