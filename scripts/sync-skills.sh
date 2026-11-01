@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # Rebuild .claude/skills/ symlinks from scripts/skills-manifest.txt, pointing into
-# vendor/skills/ (git submodules). Offline and idempotent — does not touch the
+# externals/skills/ (git submodules). Offline and idempotent — does not touch the
 # network or move any submodule's checked-out commit. Run update-skills.sh for that.
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-vendor_dir="$root_dir/vendor/skills"
+externals_dir="$root_dir/externals/skills"
 skills_dir="$root_dir/.claude/skills"
 manifest="$root_dir/scripts/skills-manifest.txt"
 
 mkdir -p "$skills_dir"
 
-# Remove only symlinks we previously created (those pointing into vendor/skills/).
+# Remove only symlinks we previously created (those pointing into externals/skills/).
 # Real directories (native project skills) and anything else are left alone.
 for entry in "$skills_dir"/*; do
     [ -e "$entry" ] || continue
     if [ -L "$entry" ]; then
         target="$(readlink -f "$entry" || true)"
         case "$target" in
-            "$vendor_dir"/*) rm "$entry" ;;
+            "$externals_dir"/*) rm "$entry" ;;
         esac
     fi
 done
@@ -30,7 +30,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     line="$(echo "$line" | xargs)"
     [ -z "$line" ] && continue
 
-    skill_path="$vendor_dir/$line"
+    skill_path="$externals_dir/$line"
     skill_md="$skill_path/SKILL.md"
 
     if [ ! -f "$skill_md" ]; then
@@ -57,7 +57,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     fi
 
     ln -sfnr "$skill_path" "$link_path"
-    echo "linked $name -> vendor/skills/$line"
+    echo "linked $name -> externals/skills/$line"
 done < "$manifest"
 
 # Keep a nested .gitignore in sync with the manifest so generated symlinks never

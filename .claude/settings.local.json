@@ -170,7 +170,18 @@
       "Read(//home/claude/.cargo-target-cache/**)",
       "Bash(ls ~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ 2>&1 | grep -i \"bevy_asset\\\\|bevy_ecs\\\\|bevy_state\" )",
       "Bash(cat -A /dev/null; nl -ba \"docs/Game/12 Content Catalogue.md\" | sed -n '1,400p')",
-      "Bash(grep -n \"LoadStage::Catalogue\\\\|Res<Catalogue>\\\\|\\\\`Catalogue\\\\`\" \"docs/Game/11 Staged Asset Loading.md\")"
+      "Bash(grep -n \"LoadStage::Catalogue\\\\|Res<Catalogue>\\\\|\\\\`Catalogue\\\\`\" \"docs/Game/11 Staged Asset Loading.md\")",
+      "Read(//home/kalin/Projects/claude-agent/**)",
+      "Bash(git -C /home/kalin/Projects/claude-agent remote -v)",
+      "Bash(git -C /home/kalin/Projects/claude-agent branch --show-current)",
+      "Bash(git --version)",
+      "Bash(git submodule *)",
+      "Bash(timeout 25 git ls-remote https://github.com/KalinDimitrow/claude-agent-sandbox.git)",
+      "Bash(git config *)",
+      "Bash(timeout 120 git submodule add https://github.com/KalinDimitrow/claude-agent-sandbox.git externals/claude-agent)",
+      "Bash(sed -i 's|vendor/skills|externals/skills|g; s|vendor_dir|externals_dir|g' scripts/sync-skills.sh scripts/update-skills.sh scripts/skills-manifest.txt)",
+      "Bash(sed -i 's|^# vendor/skills/ \\(git submodules\\)|# externals/skills/ \\(git submodules\\)|; s|# Pull latest commits for vendored skill submodules|# Pull latest commits for external skill submodules|' scripts/sync-skills.sh scripts/update-skills.sh)",
+      "Bash(./scripts/sync-skills.sh)"
     ]
   }
 }
