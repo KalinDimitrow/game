@@ -40,6 +40,7 @@ fn main() -> Result<(), BevyError> {
                 }),
         )
         .init_state::<GameState>()
+        .add_plugins(AssetLoadingPlugin)
         .add_plugins(CorePlugin)
         .add_plugins(TerrainPlugin)
         .add_plugins(CharacterControllerPlugin)

@@ -5,9 +5,7 @@ use bevy::reflect::TypePath;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use super::PendingAssets;
 use crate::components::PlayerAction;
-use crate::utils::constants::BUTTON_CONFIG_ASSET_PATH;
 
 /// An `Asset`, not a `Resource`, and loaded through `AssetServer` rather than
 /// read with `std::fs` up front like
@@ -24,28 +22,11 @@ pub struct ButtonConfig {
 }
 
 /// Keeps the [`ButtonConfig`] handle alive and findable. A strong handle also
-/// lives in [`PendingAssets`], but that one is for the loading gate - this is
-/// the one anything else reads back through.
+/// lives in the load stage's gate, but that one is cleared when the stage ends
+/// - this is the one anything else reads back through, and after `Boot` exits
+///   it's the only owner.
 #[derive(Resource)]
 pub struct ButtonConfigHandle(pub Handle<ButtonConfig>);
-
-// Kicks off the load and registers it with the loading gate, so a missing or
-// malformed `button_config.ron` fails startup loudly (via
-// `check_pending_assets`) instead of silently leaving the player with no
-// bindings. Scheduled on `Startup` by `CorePlugin`.
-//
-// Only the load side lives here. Turning a loaded `ButtonConfig` into an
-// `InputMap` on an entity is `systems::core::apply_button_config`'s job: this
-// module's concern ends at "the config is loaded and held".
-pub fn load_button_config(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut pending: ResMut<PendingAssets>,
-) {
-    let handle: Handle<ButtonConfig> = asset_server.load(BUTTON_CONFIG_ASSET_PATH);
-    pending.track(handle.clone());
-    commands.insert_resource(ButtonConfigHandle(handle));
-}
 
 /// Reads `.ron` into a [`ButtonConfig`]. All the actual work is
 /// [`parse_button_config`] below, which this shares with the tests - the
@@ -150,7 +131,7 @@ fn keycode_from_str(name: &str) -> Option<KeyCode> {
 // actions/keys are skipped with a warning (soft failure, config just has
 // stale entries); malformed RON is a hard `Err` (the file isn't usable at
 // all), which the loader surfaces as a failed load - and therefore as a
-// `PendingAssets` failure rather than a silent default.
+// `LoadStage::Boot` gate failure rather than a silent default.
 fn parse_button_config(contents: &str) -> Result<ButtonConfig, BevyError> {
     let parsed: ButtonConfigFile =
         ron::from_str(contents).map_err(|e| format!("failed to parse button config: {e}"))?;

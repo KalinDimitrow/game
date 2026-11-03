@@ -101,12 +101,12 @@ A stage is done when its handles are loaded **and** its blocker set is empty:
 /// it, so it only ever describes the stage being entered - which is also what
 /// makes re-entering a stage after a rewind clean.
 #[derive(Resource, Default)]
-pub struct LoadGate {
+pub struct StageGate {
     handles: Vec<UntypedHandle>,
     blockers: HashSet<&'static str>,
 }
 
-impl LoadGate {
+impl StageGate {
     /// Same role `PendingAssets::track` has today, scoped to one stage.
     pub fn track(&mut self, handle: impl Into<UntypedHandle>) {
         self.handles.push(handle.into());
@@ -214,7 +214,7 @@ readiness check of its own:
 ```rust
 /// A derive step gated on this cannot observe a half-loaded stage, which is
 /// what lets `build_character_animation_graph` keep having no readiness guard.
-pub fn settling(stage: LoadStage) -> impl Fn(Res<State<LoadStage>>, Res<LoadGate>) -> bool + Clone {
+pub fn settling(stage: LoadStage) -> impl Fn(Res<State<LoadStage>>, Res<StageGate>) -> bool + Clone {
     move |current, gate| *current.get() == stage && gate.is_ready()
 }
 ```
@@ -227,7 +227,7 @@ all of that existed only to hand-roll what `StateTransition` already does:
 ```rust
 fn advance_stage(
     current: Res<State<LoadStage>>,
-    gate: Res<LoadGate>,
+    gate: Res<StageGate>,
     asset_server: Res<AssetServer>,
     mut next: ResMut<NextState<LoadStage>>,
 ) -> Result<(), BevyError> {
@@ -258,7 +258,7 @@ fn advance_stage(
 }
 ```
 
-…plus `apply_rewind`, in the hot-reload section below. `LoadGate` is the
+…plus `apply_rewind`, in the hot-reload section below. `StageGate` is the
 per-stage `handles` + `blockers` from the stage model above, reset in
 `OnExit(..)` — which is also what makes re-entry clean.
 
@@ -433,7 +433,7 @@ precisely this reason:
 fn load_payload(
     asset_server: Res<AssetServer>,
     description: Res<AssetDescription>,
-    mut gate: ResMut<LoadGate>,
+    mut gate: ResMut<StageGate>,
 ) {
     // No readiness guard: `Resolve` completed, so every path here came from an
     // entry that validated. `StateTransition` runs after `PreUpdate`, so
@@ -676,7 +676,7 @@ mechanism. A stage that cold-loads into a fresh world will, on replay, run
 against a world that already holds the previous run's results:
 
 - **Tracked handles must be cleared** on leaving a stage, or they accumulate
-  duplicates across replays. That's `OnExit(stage)` resetting `LoadGate` —
+  duplicates across replays. That's `OnExit(stage)` resetting `StageGate` —
   one system for all stages, generic over nothing.
 - **Derive steps are naturally idempotent.** `commands.insert_resource(..)`
   overwrites; `Assets::add` returns a fresh handle and the old
@@ -753,7 +753,7 @@ the **machine** (steps 1–4) and the **asset description** (5–8) — which me
 
 **Machine track**
 
-1. **`PendingAssets` → `LoadGate`.** Mechanical: add the named-blocker set
+1. **`PendingAssets` → `StageGate`.** Mechanical: add the named-blocker set
    alongside the existing handle list, keep `progress` as-is. No behavior
    change, nothing else moves yet.
 2. **Add the `LoadStage` enum + `advance_stage` + the `OnExit` gate reset.**
@@ -839,7 +839,10 @@ regressions were both found by reading rather than by failing.
   hot-reloaded scripts), [[03 Phase 0 - Foundation]] item 4 (level switching —
   a level change is a rewind to `LoadStage::Index`, i.e. the same primitive as
   hot reload with a wider target)
-- 🔗 Related: [[12 Asset Description]] (what gets loaded through these stages,
+- 🔗 Related: [[13 Staged Asset Loading - Diagrams]] (class, object, component
+  and sequence diagrams of the implemented machine track — start there for the
+  frame-by-frame ordering, which is where most of this page's properties come
+  from), [[12 Asset Description]] (what gets loaded through these stages,
   and the reason the stage list has a `Resolve` and a late `World`), [[11 UI]]
   (`showcase/loading_screen.rs`), [[20 Platform Targets]] (the wasm
   directory-listing trap), [[01 Cleanup Backlog]]

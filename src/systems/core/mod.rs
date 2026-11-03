@@ -5,6 +5,7 @@ pub use self::button_config::*;
 pub use self::input::*;
 
 use crate::prelude::*;
+use crate::systems::asset_loading::LoadStage;
 
 pub struct CorePlugin;
 
@@ -24,13 +25,24 @@ impl Plugin for CorePlugin {
             check_pending_assets.run_if(in_state(GameState::Loading)),
         );
 
-        // Asset, loader and load system all come from
-        // `resources::button_config`; only `apply_button_config` below is this
-        // module's, since it writes `InputMap`s onto entities rather than
-        // producing a resource.
+        // Asset and loader come from `resources::button_config`; the two
+        // systems below are this module's, since neither produces a resource -
+        // one names a load to the load machine, the other writes `InputMap`s
+        // onto entities.
         app.init_asset::<ButtonConfig>();
         app.init_asset_loader::<ButtonConfigLoader>();
-        app.add_systems(Startup, load_button_config);
+        // The first asset to load through `AssetLoadingPlugin` rather than
+        // `PendingAssets`, and `Boot` is the stage the design assigns it: the
+        // loading screen needs its own assets before it can report on anything
+        // else. `GameState::Loading` no longer waits on this file - `Boot` does,
+        // and it holds the whole machine until the config is in `Assets<T>`.
+        //
+        // Earlier than the `Startup` this replaces, not later:
+        // `StateTransition` runs once *before* `PreStartup`
+        // (`bevy_state-0.20.0/src/state/transitions.rs:43`), so the initial
+        // `OnEnter(LoadStage::Boot)` has already happened by the time `Startup`
+        // would have run.
+        app.add_systems(OnEnter(LoadStage::Boot), load_button_config);
         // Deliberately not state-gated: this is also the hot-reload path, so
         // it has to keep listening for `Modified` long after loading is done.
         app.add_systems(Update, apply_button_config);
