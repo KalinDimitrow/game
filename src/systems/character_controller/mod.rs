@@ -19,19 +19,9 @@ impl Plugin for CharacterControllerPlugin {
         app.add_observer(attach_character_movement_input);
         app.add_observer(attach_camera_movement_input);
         app.add_observer(mark_character_scene_spawned);
-        // Both of these live in `resources::character_animations` - they exist
-        // to produce `CharacterGltfHandles` and `CharacterAnimations` - but the
-        // scheduling stays here, so the character's asset load order is visible
-        // next to the systems that consume it.
-        //
-        // No `Loading` system of its own anymore: `load_character_gltf_handles`
-        // registers its handles with `PendingAssets` and `CorePlugin`'s
-        // `check_pending_assets` drives the transition for every plugin at once.
-        app.add_systems(Startup, load_character_gltf_handles);
-        app.add_systems(OnEnter(GameState::Initialize), build_character_animation_graph);
         app.add_systems(
             Update,
-            finish_character_initialization.run_if(in_state(GameState::Initialize)),
+            finish_character_initialization.run_if(in_state(GameState::Playing)),
         );
         app.add_systems(
             Update,
@@ -50,19 +40,6 @@ impl Plugin for CharacterControllerPlugin {
     }
 }
 
-// Attaches input bindings the instant `Character`/`Camera3d` is actually
-// inserted - `InputMap` itself is never authored as RON data (its fields are
-// boxed trait objects, not something to hand-write), so this is the bridge
-// that makes `test_world.scn.ron`'s character/camera controllable without
-// putting input config in the scene file.
-//
-// Observers rather than polling `Added<_>` every frame: each component type
-// gets its own discrete, one-time event here (no other async condition to
-// wait on, unlike `attach_character_animation_graph` below), which is exactly
-// what observers are for - and `Camera3d` is Bevy's type, not ours, so a
-// component hook (single-slot, exclusive) would risk colliding with one Bevy
-// itself adds in a future version. Two observers, not one, because
-// `On<Add<T>>` is monomorphic over a single component type.
 fn attach_character_movement_input(trigger: On<Add<Character>>, mut commands: Commands) {
     let mut movement_input = InputMap::<CharacterMovement>::default();
     movement_input
@@ -80,15 +57,6 @@ fn attach_camera_movement_input(trigger: On<Add<Camera3d>>, mut commands: Comman
     );
 }
 
-// Keeps `CharacterVisual` positioned on `Character` without relying on ECS
-// parent/child + `GlobalTransform` propagation - confirmed (via a throwaway
-// diagnostic, since removed) that propagation never recomputed a
-// `DynamicWorld`-spawned mesh parented under a `RigidBody`, even after 15+
-// seconds and forcing `Transform` to re-register as changed. Matches
-// avian3d's own documented stance on rigid-body hierarchies being flat:
-// "write your own system to handle hierarchies differently." `Character`
-// never rotates (`LockedAxes::ROTATION_LOCKED`), so a plain translation
-// offset is enough - no rotation composition needed.
 const CHARACTER_VISUAL_OFFSET: Vec3 = Vec3::new(0.0, -0.9, 0.0);
 
 fn sync_character_visual_transform(
@@ -98,18 +66,6 @@ fn sync_character_visual_transform(
     visual.translation = character.translation + CHARACTER_VISUAL_OFFSET;
 }
 
-// `WorldInstanceReady` fires on the entity owning the `WorldAssetRoot`, so for
-// the character that's the `CharacterVisual` itself (entity 10 in
-// `test_world.scn.ron`) once its nested glTF scene instance - and therefore
-// the `AnimationPlayer` inside it - exists.
-//
-// This is the "there's no event for an entity existing" gap in `GameState`'s
-// old doc comment, closed: `check_character_ready` used to poll for a
-// `Character`, which was really standing in for "the world spawned" (a
-// `Character` only ever comes from the scene). That worked, but made an entity
-// query the de-facto readiness signal for an asset load. `bevy_world_serialization`
-// publishes the actual completion event; this just narrows it to the instance
-// we care about, since every `WorldAssetRoot` in the scene fires one.
 fn mark_character_scene_spawned(
     trigger: On<WorldInstanceReady>,
     visuals: Query<(), With<CharacterVisual>>,
@@ -120,25 +76,6 @@ fn mark_character_scene_spawned(
     }
 }
 
-// Attaches the animation graph to the character's `AnimationPlayer` and hands
-// off to `Playing` - one system where there used to be two chained ones
-// (`attach_character_animation_graph` + `check_character_ready`), since the
-// transition is just "the attach succeeded" and splitting them meant the
-// second had to re-derive what the first already knew.
-//
-// Deliberately order-independent rather than relying on `CharacterSceneSpawned`
-// and `CharacterAnimations` arriving in a particular order: the graph is built
-// in `OnEnter(Initialize)` (i.e. `StateTransition`) while the scene instance
-// spawns in `SpawnScene`, two different schedules, and the margin between them
-// is not something worth depending on. Returning early and retrying next frame
-// costs a couple of frames during `Initialize` and nothing after.
-//
-// Same reason it queries "has a player but no graph yet" instead of
-// `Added<AnimationPlayer>`: `Added` is only true for the one frame the
-// component appeared, which isn't guaranteed to be a frame where the graph
-// also exists - confirmed previously via a throwaway diagnostic that the
-// player existed in the world the whole time, just never on the same frame as
-// `Added` and a ready `CharacterAnimations` at once.
 fn finish_character_initialization(
     mut commands: Commands,
     animations: Option<Res<CharacterAnimations>>,
@@ -172,9 +109,6 @@ fn finish_character_initialization(
         attached = true;
     }
 
-    // Only advance once a player was actually set up. `CharacterSceneSpawned`
-    // says the instance spawned, which is one sync point ahead of this query
-    // seeing its entities.
     if attached {
         next_state.set(GameState::Playing);
     }
@@ -219,7 +153,7 @@ fn move_character(
     velocity.0.z = direction.z * MOVE_SPEED;
 
     // Grounded heuristic, not a real ground check: good enough for a collision
-    // testbed, not for shipping. See the cleanup backlog.
+    // testbed, not for shipping.
     let grounded = velocity.0.y.abs() < 0.05;
     if grounded && action_state.just_pressed(&CharacterMovement::Jump) {
         velocity.0.y = JUMP_SPEED;
@@ -233,18 +167,12 @@ fn move_character(
     } else {
         CharacterAnimationState::Idle
     };
-    // Only write on an actual change - `Changed<CharacterAnimationState>` (read
-    // by `apply_character_animation`) fires on every write, not just value
-    // changes, and replaying an already-playing clip restarts it from frame 0.
+
     if *animation_state != desired_state {
         *animation_state = desired_state;
     }
 }
 
-// Separate `Query`s rather than `Single`s here on purpose: the animation
-// player doesn't exist until the character's glTF scene finishes loading (which can
-// take several frames), so "no match yet" is an expected, non-error state -
-// `Single` would panic on it instead of just skipping.
 fn apply_character_animation(
     character: Query<&CharacterAnimationState, (With<Character>, Changed<CharacterAnimationState>)>,
     animations: Option<Res<CharacterAnimations>>,
@@ -271,10 +199,6 @@ fn apply_character_animation(
         .repeat();
 }
 
-// Rotates the visual child (not `Character` itself, whose rotation is locked
-// for physics - see the `LockedAxes` component on `Character` in
-// `test_world.scn.ron`) to face the current horizontal movement direction,
-// slerping toward it so direction changes turn smoothly instead of snapping.
 fn orient_character_visual(
     character: Single<&LinearVelocity, With<Character>>,
     mut visual: Query<&mut Transform, With<CharacterVisual>>,
