@@ -7,30 +7,13 @@ use std::collections::HashMap;
 
 use crate::components::PlayerAction;
 
-/// An `Asset`, not a `Resource`, and loaded through `AssetServer` rather than
-/// read with `std::fs` up front like
-/// [`GraphicsConfig`](crate::utils::system_config::GraphicsConfig).
-/// Nothing needs the bindings before the `App` exists - the only consumer is a
-/// system - and going through the asset system buys three things `std::fs`
-/// can't: hot-reload (edit `button_config.ron`, see the rebind live, which is
-/// what a rebinding UI will want anyway), no dependence on the process's
-/// working directory, and a path that keeps working off a non-filesystem
-/// `AssetSource` (wasm has no `std::fs`).
 #[derive(Asset, TypePath)]
 pub struct ButtonConfig {
     pub bindings: Vec<(PlayerAction, KeyCode)>,
 }
-
-/// Keeps the [`ButtonConfig`] handle alive and findable. A strong handle also
-/// lives in the load stage's gate, but that one is cleared when the stage ends
-/// - this is the one anything else reads back through, and after `Boot` exits
-///   it's the only owner.
 #[derive(Resource)]
 pub struct ButtonConfigHandle(pub Handle<ButtonConfig>);
 
-/// Reads `.ron` into a [`ButtonConfig`]. All the actual work is
-/// [`parse_button_config`] below, which this shares with the tests - the
-/// loader only turns bytes into a `&str`.
 #[derive(Default, TypePath)]
 pub struct ButtonConfigLoader;
 
@@ -55,22 +38,11 @@ impl AssetLoader for ButtonConfigLoader {
         parse_button_config(contents)
     }
 
-    // Bare `ron`, which `.scn.ron` world files also end in - harmless, because
-    // `bevy_asset`'s loader lookup (`loaders::find`) tries the asset *type*
-    // first and only falls back to extension when the type is ambiguous. Both
-    // of these are typed loads (`load::<ButtonConfig>` /
-    // `load::<DynamicWorld>`) with exactly one loader registered per type, so
-    // neither can pick up the other's files. Extension matching also prefers
-    // the longest match, so `scn.ron` would win over `ron` regardless.
     fn extensions(&self) -> &[&str] {
         &["ron"]
     }
 }
 
-// Placeholder config format: maps an action's name to the keys that trigger it.
-// This indirection is what makes rebinding possible - systems only ever check
-// `PlayerAction`, never a hardcoded `KeyCode`, so changing this file is enough
-// to change which keys do what.
 #[derive(Deserialize)]
 struct ButtonConfigFile {
     bindings: HashMap<String, Vec<String>>,
