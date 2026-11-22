@@ -14,9 +14,9 @@ mkdir -p "$skills_dir"
 # Remove only symlinks we previously created (those pointing into externals/skills/).
 # Real directories (native project skills) and anything else are left alone.
 for entry in "$skills_dir"/*; do
-    [ -e "$entry" ] || continue
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
     if [ -L "$entry" ]; then
-        target="$(readlink -f "$entry" || true)"
+        target="$(readlink -m "$entry" || true)"
         case "$target" in
             "$externals_dir"/*) rm "$entry" ;;
         esac

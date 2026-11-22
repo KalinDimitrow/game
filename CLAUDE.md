@@ -27,5 +27,5 @@ an explicit instruction to change the code.
 
 ## Build
 
-Use `CARGO_TARGET_DIR=/home/claude/.cargo-target-cache/game` and do not vary
+Use `CARGO_TARGET_DIR=/home/agent/.cargo-target-cache/game` and do not vary
 `WGPU_BACKEND`/`DISPLAY` between invocations — both cause full rebuilds.
