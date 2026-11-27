@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CARGO_TARGET_DIR": "/home/kalin/Projects/ClaudeRepos/game/target/agent"
+  },
   "permissions": {
     "allow": [
       "Bash(ls -la /usr/bin/rg /usr/local/bin/rg 2>&1; echo \"---test via function---\"; rg --version)",

@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use leafwing_input_manager::Actionlike;
+use strum::EnumIter;
 
 #[derive(Actionlike, Clone, Debug, Copy, PartialEq, Eq, Hash, Reflect)]
 #[actionlike(DualAxis)]
@@ -7,7 +8,7 @@ pub enum CameraMovement {
     Pan,
 }
 
-#[derive(Actionlike, Clone, Debug, Copy, PartialEq, Eq, Hash, Reflect)]
+#[derive(Actionlike, Clone, Debug, Copy, PartialEq, Eq, Hash, Reflect, EnumIter)]
 pub enum PlayerAction {
     Confirm,
     Pause,
