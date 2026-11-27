@@ -35,7 +35,7 @@ impl AssetLoader for ButtonConfigLoader {
             .map_err(|e| format!("failed to read button config: {e}"))?;
         let contents = std::str::from_utf8(&bytes)
             .map_err(|e| format!("button config is not valid UTF-8: {e}"))?;
-        parse_button_config(contents)
+        ButtonConfig::parse(contents)
     }
 
     fn extensions(&self) -> &[&str] {
@@ -98,61 +98,58 @@ fn keycode_from_str(name: &str) -> Option<KeyCode> {
     KEYCODES.iter().find(|(key_name, _)| *key_name == name).map(|(_, key)| *key)
 }
 
-// Pure parsing/validation, kept separate from the loader above so it's
-// testable without a filesystem (and, now, without an `App`). Unknown
-// actions/keys are skipped with a warning (soft failure, config just has
-// stale entries); malformed RON is a hard `Err` (the file isn't usable at
-// all), which the loader surfaces as a failed load - and therefore as a
-// `LoadStage::Boot` gate failure rather than a silent default.
-fn parse_button_config(contents: &str) -> Result<ButtonConfig, BevyError> {
-    let parsed: ButtonConfigFile =
-        ron::from_str(contents).map_err(|e| format!("failed to parse button config: {e}"))?;
+impl ButtonConfig {
+    // Pure parsing/validation, kept separate from the loader above so it's
+    // testable without a filesystem (and, now, without an `App`). Unknown
+    // actions/keys are skipped with a warning (soft failure, config just has
+    // stale entries); malformed RON is a hard `Err` (the file isn't usable at
+    // all), which the loader surfaces as a failed load - and therefore as a
+    // `LoadStage::Boot` gate failure rather than a silent default.
+    fn parse(contents: &str) -> Result<Self, BevyError> {
+        let parsed: ButtonConfigFile =
+            ron::from_str(contents).map_err(|e| format!("failed to parse button config: {e}"))?;
 
-    let mut bindings = Vec::new();
-    for (action_name, key_names) in parsed.bindings {
-        let Some(action) = action_from_str(&action_name) else {
-            warn!("unknown action `{action_name}` in button config, skipping");
-            continue;
-        };
-        for key_name in key_names {
-            let Some(key) = keycode_from_str(&key_name) else {
-                warn!("unknown key `{key_name}` in button config, skipping");
+        let mut bindings = Vec::new();
+        for (action_name, key_names) in parsed.bindings {
+            let Some(action) = action_from_str(&action_name) else {
+                warn!("unknown action `{action_name}` in button config, skipping");
                 continue;
             };
-            bindings.push((action, key));
+            for key_name in key_names {
+                let Some(key) = keycode_from_str(&key_name) else {
+                    warn!("unknown key `{key_name}` in button config, skipping");
+                    continue;
+                };
+                bindings.push((action, key));
+            }
         }
+        Ok(Self { bindings })
     }
-    Ok(ButtonConfig { bindings })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
 
+    // The test that guards the real failure mode: `action_from_str` is a
+    // hand-written string match with a `_ => None` fallback, so adding a
+    // `PlayerAction` variant without mapping it - or a typo in the shipped
+    // file - compiles fine and only logs a warning at runtime. Parsing the
+    // file we actually ship and requiring every action to be bound turns
+    // either mistake into a test failure.
     #[test]
-    fn parses_valid_button_config() {
-        let ron = r#"(
-            bindings: {
-                "Confirm": ["Enter"],
-                "Pause": ["Escape"],
-            }
-        )"#;
+    fn shipped_config_binds_every_action() {
+        let config =
+            ButtonConfig::parse(include_str!("../../data/config/button_config.ron"))
+                .expect("shipped button_config.ron should parse");
 
-        let mut bindings = parse_button_config(ron).expect("valid config should parse").bindings;
-        bindings.sort_by_key(|(action, _)| format!("{action:?}"));
-
-        assert_eq!(
-            bindings,
-            vec![
-                (PlayerAction::Confirm, KeyCode::Enter),
-                (PlayerAction::Pause, KeyCode::Escape),
-            ]
-        );
-    }
-
-    #[test]
-    fn malformed_button_ron_is_an_error_not_a_panic() {
-        assert!(parse_button_config("not valid ron at all {{{").is_err());
+        for action in PlayerAction::iter() {
+            assert!(
+                config.bindings.iter().any(|(bound, _)| *bound == action),
+                "{action:?} has no binding in the shipped button_config.ron"
+            );
+        }
     }
 
     #[test]
@@ -163,7 +160,7 @@ mod tests {
             }
         )"#;
 
-        let bindings = parse_button_config(ron)
+        let bindings = ButtonConfig::parse(ron)
             .expect("unknown action should be skipped, not fail parsing")
             .bindings;
         assert!(bindings.is_empty());
@@ -177,7 +174,7 @@ mod tests {
             }
         )"#;
 
-        let bindings = parse_button_config(ron)
+        let bindings = ButtonConfig::parse(ron)
             .expect("unknown key should be skipped, not fail parsing")
             .bindings;
         assert!(bindings.is_empty());
